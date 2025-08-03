@@ -1,8 +1,9 @@
+<p align="center">
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![Made With](https://img.shields.io/badge/Made%20With-Jenkins-blue?style=flat-square)
 ![Hosted On](https://img.shields.io/badge/Hosted%20On-AWS%20EC2-orange?style=flat-square)
-
+</p>
 <h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
 
 <p align="center">
