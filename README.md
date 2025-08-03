@@ -1,3 +1,16 @@
+<h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
+
+<p align="center">
+  A complete end-to-end CI/CD pipeline setup using <strong>GitHub Webhook</strong>, <strong>Jenkins</strong>, and <strong>AWS EC2</strong> that automatically builds, tests, and deploys code with every push!
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Built%20With-Jenkins-blue?style=for-the-badge&logo=jenkins&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Powered%20By-AWS-orange?style=for-the-badge&logo=amazon-aws&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Hosted%20On-EC2-brightgreen?style=for-the-badge&logo=amazon-ec2&logoColor=white"/>
+</p>
+
+---
 <!-- Build Status Badge from Jenkins -->
 <!--![Jenkins Build](http://<JENKINS_URL>/buildStatus/icon?job=<JOB_NAME>&style=flat-square)-->
 <div align="center">
@@ -23,22 +36,6 @@
 ![Visitors](https://visitor-badge.laobi.icu/badge?page_id=KaranPrince.jenkins-node-ci)
 
 </div>
-
-
-<h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
-
-<p align="center">
-  A complete end-to-end CI/CD pipeline setup using <strong>GitHub Webhook</strong>, <strong>Jenkins</strong>, and <strong>AWS EC2</strong> that automatically builds, tests, and deploys code with every push!
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Built%20With-Jenkins-blue?style=for-the-badge&logo=jenkins&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Powered%20By-AWS-orange?style=for-the-badge&logo=amazon-aws&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Hosted%20On-EC2-brightgreen?style=for-the-badge&logo=amazon-ec2&logoColor=white"/>
-</p>
-
----
-
 ## 🌟 Project Overview
 
 Welcome to my **end-to-end CI/CD DevOps project**! This project demonstrates a complete **CI/CD pipeline** using:
