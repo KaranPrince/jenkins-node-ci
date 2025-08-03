@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DEPLOY_USER = 'ubuntu'
-        DEPLOY_HOST = 'YOUR_PUBLIC_EC2_IP'
+        DEPLOY_HOST = '13.232.138.18'
         PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
     }
 
