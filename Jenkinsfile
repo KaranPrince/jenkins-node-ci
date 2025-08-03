@@ -2,9 +2,12 @@ pipeline {
     agent any
 
     environment {
-        DEPLOY_USER = 'ubuntu'
-        DEPLOY_HOST = '13.232.138.18'
-        PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
+        // Define placeholders for Git info
+        GIT_BRANCH = ''
+        GIT_COMMIT_HASH = ''
+        GIT_COMMIT_AUTHOR = ''
+        GIT_COMMIT_DATE = ''
+        GIT_COMMIT_MESSAGE = ''
     }
 
     stages {
@@ -19,6 +22,7 @@ pipeline {
             steps {
                 echo '🔧 Build stage initiated...'
                 echo '✅ Build Stage Started: Compiling or preparing code (simulated)'
+                // Simulate build or actual build steps here
             }
         }
 
@@ -30,45 +34,38 @@ pipeline {
         }
 
         stage('Deploy') {
-    steps {
-        echo '🚀 Deploying to EC2 Instance...'
+            steps {
+                echo '🚀 Deploying to EC2 Instance...'
+                
+                // Fetch Git info
+                script {
+                    env.GIT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT_HASH = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT_AUTHOR = sh(script: 'git log -1 --pretty=format:"%an"', returnStdout: true).trim()
+                    env.GIT_COMMIT_DATE = sh(script: 'git log -1 --pretty=format:"%cd"', returnStdout: true).trim()
+                    env.GIT_COMMIT_MESSAGE = sh(script: 'git log -1 --pretty=format:"%s"', returnStdout: true).trim()
+                }
 
-        script {
-            def gitBranch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-            def gitCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-            def gitAuthor = sh(script: 'git log -1 --pretty=format:\'%an\'', returnStdout: true).trim()
-            def gitDate = sh(script: 'git log -1 --pretty=format:\'%cd\'', returnStdout: true).trim()
-            def gitMessage = sh(script: 'git log -1 --pretty=format:\'%s\'', returnStdout: true).trim()
+                // Replace placeholders in index.html
+                sh """
+                    sed -i 's|\\\$\\{GIT_BRANCH\\}|${GIT_BRANCH}|' index.html
+                    sed -i 's|\\\$\\{GIT_COMMIT_HASH\\}|${GIT_COMMIT_HASH}|' index.html
+                    sed -i 's|\\\$\\{GIT_COMMIT_AUTHOR\\}|${GIT_COMMIT_AUTHOR}|' index.html
+                    sed -i 's|\\\$\\{GIT_COMMIT_DATE\\}|${GIT_COMMIT_DATE}|' index.html
+                    sed -i 's|\\\$\\{GIT_COMMIT_MESSAGE\\}|${GIT_COMMIT_MESSAGE}|' index.html
+                """
 
-            sh """
-            sed -i 's|\\\$\\{GIT_BRANCH\\}|${gitBranch}|' index.html
-            sed -i 's|\\\$\\{GIT_COMMIT\\}|${gitCommit}|' index.html
-            sed -i 's|\\\$\\{GIT_AUTHOR\\}|${gitAuthor}|' index.html
-            sed -i 's|\\\$\\{GIT_DATE\\}|${gitDate}|' index.html
-            sed -i 's|\\\$\\{GIT_MESSAGE\\}|${gitMessage}|' index.html
-            """
+                echo "✅ Git commit info injected successfully into index.html"
+            }
         }
-
-        sh """
-        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
-            sudo mkdir -p /var/www/html/jenkins-deploy &&
-            sudo rm -rf /var/www/html/jenkins-deploy/*'
-        scp -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} index.html ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/index.html
-        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
-            sudo mv /tmp/index.html /var/www/html/jenkins-deploy/index.html'
-        """
-
-        echo '✅ Deployment to EC2 completed!'
-    }
-}
     }
 
     post {
         success {
-            echo "✅ Build #${env.BUILD_NUMBER} completed and deployed successfully!"
+            echo "🎉 Build #${BUILD_NUMBER} completed successfully!"
         }
         failure {
-            echo "❌ Build #${env.BUILD_NUMBER} failed."
+            echo "❌ Build #${BUILD_NUMBER} failed."
         }
     }
 }
