@@ -30,19 +30,19 @@ pipeline {
         }
 
         stage('Deploy') {
-            steps {
-                echo '🚀 Deploying to EC2 Instance...'
-                sh """
-                chmod 400 ${PEM_KEY_PATH}
-                ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
-                    sudo mkdir -p /var/www/html/jenkins-deploy &&
-                    sudo rm -rf /var/www/html/jenkins-deploy/* &&
-                    echo "<h1>Deployed via Jenkins from GitHub Webhook 🚀</h1>" | sudo tee /var/www/html/jenkins-deploy/index.html
-                '
-                """
-                echo '✅ Deployment to EC2 completed!'
-            }
-        }
+    steps {
+        echo '🚀 Deploying to EC2 Instance...'
+        sh """
+        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} "
+            sudo mkdir -p /var/www/html/jenkins-deploy &&
+            sudo rm -rf /var/www/html/jenkins-deploy/* &&
+            echo '<h1>Deployed via Jenkins from GitHub Webhook 🚀</h1>' | sudo tee /var/www/html/jenkins-deploy/index.html
+        "
+        """
+        echo '✅ Deployment to EC2 completed!'
+    }
+}
+
     }
 
     post {
