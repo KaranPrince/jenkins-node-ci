@@ -1,4 +1,4 @@
-<img width="1113" height="630" alt="image" src="https://github.com/user-attachments/assets/148fdf79-b2b5-4b82-b040-714fb78b634d" /><h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
+<h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Built%20With-Jenkins-blue?style=for-the-badge&logo=jenkins&logoColor=white"/>
