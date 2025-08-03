@@ -1,7 +1,7 @@
 <div align="center">
 
 <!-- Build Status Badge from Jenkins -->
-![Jenkins Build](http://<YOUR_JENKINS_URL>/buildStatus/icon?job=<JOB_NAME>&style=flat-square)
+![Jenkins Build](http://13.232.138.18:8080/buildStatus/icon?job=<JOB_NAME>&style=flat-square)
 
 ![Build Passing](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
@@ -14,6 +14,7 @@
 ![Open Issues](https://img.shields.io/github/issues/KaranPrince/jenkins-node-ci?style=flat-square)
 ![Forks](https://img.shields.io/github/forks/KaranPrince/jenkins-node-ci?style=flat-square)
 ![Stars](https://img.shields.io/github/stars/KaranPrince/jenkins-node-ci?style=flat-square)
+![Visitors](https://visitor-badge.laobi.icu/badge?page_id=KaranPrince.jenkins-node-ci)
 
 </div>
 
