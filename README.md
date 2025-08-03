@@ -1,8 +1,7 @@
-  ![Build Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
-  ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
-  ![Made With](https://img.shields.io/badge/Made%20With-Jenkins-blue?style=flat-square)
-  ![Hosted On](https://img.shields.io/badge/Hosted%20On-AWS%20EC2-orange?style=flat-square)
-
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+![Made With](https://img.shields.io/badge/Made%20With-Jenkins-blue?style=flat-square)
+![Hosted On](https://img.shields.io/badge/Hosted%20On-AWS%20EC2-orange?style=flat-square)
 
 <h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
 
@@ -20,8 +19,7 @@
 
 ## 🌟 Project Overview
 
-Welcome to my **end-to-end CI/CD DevOps project**!  
-This project demonstrates a complete **CI/CD pipeline** using:
+Welcome to my **end-to-end CI/CD DevOps project**! This project demonstrates a complete **CI/CD pipeline** using:
 
 - 🔁 **GitHub Webhook** for triggering Jenkins on code push
 - ⚙️ **Jenkins Pipeline** (Declarative) to build, test, and deploy
@@ -34,98 +32,95 @@ This is a real-time deployment pipeline built from scratch, fully automated usin
 
 ## 🧰 Tech Stack
 
-| Category              | Tools / Services                                  |
-|----------------------|---------------------------------------------------|
-| CI/CD Pipeline        | Jenkins 🧰                                          |
-| Version Control       | Git & GitHub 🐙                                    |
-| Deployment Server     | AWS EC2 (Ubuntu) 💻                                 |
-| Auth & Security       | SSH using `.pem` key 🔐                            |
-| Hosting Path          | `/var/www/html/jenkins-deploy` 🌍                 |
-| 🎨 Frontend           |  HTML, CSS                                          |
-| Script Language       | Shell (Bash) 🐚                                     |
+| Category              | Tools / Services                          |
+|----------------------|-------------------------------------------|
+| CI/CD Pipeline       | Jenkins 🧰                                 |
+| Version Control      | Git & GitHub 🐙                            |
+| Deployment Server    | AWS EC2 (Ubuntu) 💻                        |
+| Auth & Security      | SSH using `.pem` key 🔐                    |
+| Hosting Path         | `/var/www/html/jenkins-deploy` 🌍         |
+| Frontend             | HTML, CSS 🎨                               |
+| Script Language      | Shell (Bash) 🐚                            |
 
 ---
+
 ## ⚙️ Jenkins Pipeline Stages
 
-| Stage     | Description |
-|-----------|-------------|
-| 🔄 **Checkout** | Pulls latest code from GitHub repo |
-| 🔧 **Build**    | Simulated build/compilation |
-| 🧪 **Test**     | Runs basic validation tests |
-| 🚀 **Deploy**   | Deploys to AWS EC2 and updates `index.html` |
-| ✅ **Post**     | Prints build success/failure |
+| Stage       | Description                                 |
+|-------------|---------------------------------------------|
+| 🔄 Checkout | Pulls latest code from GitHub repo          |
+| 🔧 Build    | Simulated build/compilation stage           |
+| 🧪 Test     | Runs basic validation/unit tests            |
+| 🚀 Deploy   | SSH to EC2 and deploys styled HTML page     |
+| ✅ Post     | Shows success/failure & runs curl healthcheck |
 
+---
 
 ## 📂 Project Structure
 
+```
+jenkins-node-ci/
 ├── Jenkinsfile
 ├── app/
-│ └── index.html # HTML output template with placeholders
+│   └── index.html     # HTML output template with injected Git info
 ├── assets/
-│ ├── screenshot1.png # GitHub webhook screenshot
-│ ├── screenshot2.png # Jenkins pipeline stages
-│ └── screenshot3.png # EC2 Deployment result
+│   ├── webhook.png    # GitHub webhook configuration screenshot
+│   ├── pipeline.png   # Jenkins build pipeline screenshot
+│   └── output.png     # EC2 browser output screenshot
 └── README.md
-
+```
 
 ---
 
 ## 🛠️ Jenkins Pipeline Workflow
 
-1. 🟢 **Code Pushed to GitHub**  
-2. 🔔 **Webhook triggers Jenkins Job**  
-3. 🧱 **Build & Test Stage**  
-4. 🚀 **SSH into EC2 & Deploy HTML**  
-5. ✅ **Post Build Summary**
+1. ✅ **Code is pushed to GitHub**
+2. ✅ **GitHub Webhook triggers Jenkins Job**
+3. ✅ **Build & Test pipeline stages run**
+4. ✅ **HTML file is updated with Git info**
+5. ✅ **HTML file is deployed to EC2 using SSH**
+6. ✅ **Post-deploy health check with `curl` ensures it's live**
 
-### ✨ Final Output:
+### ✅ Final Output
+
 > Visit: `http://<your-ec2-ip>/jenkins-deploy/`  
 > You’ll see:
-<h1>Deployed via Jenkins from GitHub Webhook 🚀</h1>
-
+```html
+🚀 Jenkins Deployment Successful!
+Git Metadata shown in a styled HTML page.
+```
 
 ---
 
 ## 📸 Screenshots
 
-| 🔗 GitHub Webhook | ⚙️ Jenkins Build | 🌐 EC2 Output |
-|------------------|------------------|----------------|
-| ![](assets/screenshot1.png) | ![](assets/screenshot2.png) | ![](assets/screenshot3.png) |
-
----
-
-## 🛠 How It Works
-
-1. ✅ **GitHub push** triggers Jenkins via Webhook
-2. ✅ Jenkins executes pipeline from `Jenkinsfile`
-3. ✅ Git commit metadata is injected into `index.html`
-4. ✅ `index.html` is uploaded to `/var/www/html/jenkins-deploy` on EC2
-5. ✅ Output shows all commit details in styled format
+| 🔗 GitHub Webhook Setup | ⚙️ Jenkins Pipeline | 🌐 EC2 Deployed Output |
+|-------------------------|--------------------|------------------------|
+| ![](assets/webhook.png) | ![](assets/pipeline.png) | ![](assets/output.png) |
 
 ---
 
 ## 📌 Setup Instructions
 
-> Assumes:
-> - Jenkins is installed on an EC2 instance
-> - GitHub Webhook is configured
-> - SSH access (PEM key) to target EC2
+> Requirements:
+> - Jenkins installed on EC2 (or local)
+> - Public EC2 instance for HTML output
+> - GitHub Webhook enabled (Settings > Webhooks)
+> - SSH `.pem` key added in Jenkins securely
 
-### 🔗 GitHub Webhook Setup
-
-1. Go to GitHub repo → Settings → Webhooks → Add:
-
+---
 
 ## 💡 Future Improvements
 
-🐳 Add Docker build/push stage
-🧪 Add unit test coverage with JUnit
-🧰 Setup Prometheus + Grafana for monitoring
-🏗️ Add staging & production environments
-💬 Integrate Slack/Mattermost for pipeline alerts
+- 🐳 Add Docker build/push stage
+- 🧪 Add JUnit test coverage reporting
+- 📊 Integrate Prometheus + Grafana monitoring
+- 🌐 Add multi-environment support (staging/prod)
+- 📩 Slack/Mattermost integration for notifications
 
+---
 
-## 📢 Author
+## 🙋‍♂️ Author
 
 <p align="center">
   <strong>Karan S</strong><br>
@@ -133,11 +128,4 @@ This is a real-time deployment pipeline built from scratch, fully automated usin
   📁 <a href="https://github.com/KaranPrince" target="_blank">GitHub</a>
 </p>
 
-🙌 Support
-If you found this useful:
-⭐ Star this repo
-🔁 Fork & try it yourself
-💬 Drop your feedback
-
-<p align="center"> Made with ❤️ by Karan S | CI/CD Automation - GitHub ⚙️ Jenkins 🚀 EC2 🌐 AWS ☁️</strong></p>
- </p>
+<p align="center">Made with ❤️ by Karan S | Jenkins + GitHub + EC2</p>
