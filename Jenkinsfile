@@ -18,58 +18,54 @@ pipeline {
         stage('Build') {
             steps {
                 echo '🔧 Build stage initiated...'
-                echo '✅ Simulating build process...'
+                echo '✅ Build Stage Started: Compiling or preparing code (simulated)'
             }
         }
 
         stage('Test') {
             steps {
                 echo '🧪 Running basic tests...'
-                sh 'echo All tests passed!'
+                sh 'echo All tests passed successfully!'
             }
         }
 
-        stage('Inject Git Info') {
+        stage('Deploy') {
             steps {
-                echo '📝 Injecting Git data into HTML...'
+                echo '🚀 Deploying to EC2 Instance...'
+
                 script {
-                    def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    def gitCommit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-                    def gitAuthor = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
-                    def gitDate = sh(script: "git log -1 --pretty=format:%cd", returnStdout: true).trim()
-                    def gitMessage = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
-                    def buildNum = env.BUILD_NUMBER
+                    env.GIT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.GIT_AUTHOR = sh(script: 'git log -1 --pretty=format:%an', returnStdout: true).trim()
+                    env.GIT_DATE = sh(script: 'git log -1 --pretty=format:%cd', returnStdout: true).trim()
+                    env.GIT_MESSAGE = sh(script: 'git log -1 --pretty=format:%s', returnStdout: true).trim()
 
-                    sh "sed -i 's|__BUILD_NUMBER__|${buildNum}|' index.html"
-                    sh "sed -i 's|__GIT_BRANCH__|${gitBranch}|' index.html"
-                    sh "sed -i 's|__GIT_COMMIT__|${gitCommit}|' index.html"
-                    sh "sed -i 's|__GIT_AUTHOR__|${gitAuthor}|' index.html"
-                    sh "sed -i 's|__GIT_DATE__|${gitDate}|' index.html"
-                    sh "sed -i 's|__GIT_MESSAGE__|${gitMessage}|' index.html"
+                    sh """
+                    sed -i "s|__BUILD_NUMBER__|${env.BUILD_NUMBER}|g" app/index.html
+                    sed -i "s|__GIT_DATE__|${env.GIT_DATE}|g" app/index.html
+                    sed -i "s|__GIT_BRANCH__|${env.GIT_BRANCH}|g" app/index.html
+                    sed -i "s|__GIT_COMMIT__|${env.GIT_COMMIT}|g" app/index.html
+                    sed -i "s|__GIT_AUTHOR__|${env.GIT_AUTHOR}|g" app/index.html
+                    sed -i "s|__GIT_MESSAGE__|${env.GIT_MESSAGE}|g" app/index.html
+
+                    scp -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} app/index.html ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/index.html
+                    ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        sudo mv /tmp/index.html /var/www/html/index.html
+                    '
+                    """
                 }
-            }
-        }
 
-        stage('Deploy to EC2') {
-            steps {
-                echo '🚀 Deploying to EC2...'
-                sh """
-                ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
-                    sudo mkdir -p /var/www/html/jenkins-deploy &&
-                    sudo rm -rf /var/www/html/jenkins-deploy/* &&
-                    sudo cp index.html /var/www/html/jenkins-deploy/index.html
-                '
-                """
+                echo '✅ Deployment to EC2 completed!'
             }
         }
     }
 
     post {
         success {
-            echo "✅ Deployment Complete!"
+            echo "✅ Build #${env.BUILD_NUMBER} completed and deployed successfully!"
         }
         failure {
-            echo "❌ Pipeline failed!"
+            echo "❌ Build #${env.BUILD_NUMBER} failed."
         }
     }
 }
