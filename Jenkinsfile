@@ -1,46 +1,47 @@
 pipeline {
     agent any
 
+    environment {
+        BUILD_ID = "${env.BUILD_NUMBER}"
+    }
+
     stages {
         stage('Checkout Code') {
             steps {
-                echo '🔄 Checking out source code from GitHub...'
+                echo "🔄 Checking out source code from GitHub..."
                 checkout scm
             }
         }
 
         stage('Build') {
             steps {
-                echo '🔧 Build stage initiated...'
-                echo "✅ Build Stage Started: Compiling or preparing code (simulated)"
-                // Add actual build commands if applicable
+                echo "\n🔧 Build stage initiated..."
+                echo "✅ Build Stage Started: Compiling or preparing code (simulated)\n"
             }
         }
 
         stage('Test') {
             steps {
-                echo '🧪 Running basic tests...'
-                // Add test scripts here
-                sh 'echo "All tests passed successfully!"'
+                echo "\n🧪 Running basic tests..."
+                sh 'echo All tests passed successfully!\n'
             }
         }
 
         stage('Deploy') {
             steps {
-                echo '🚀 Deploying to test environment...'
-                // Simulate deployment step
-                sh 'echo "Deployment simulated."'
-                echo "✅ Deploy Stage: Deploying updated HTML with About section"
+                echo "\n🚀 Deploying to test environment..."
+                sh 'echo Deployment simulated.\n'
+                echo "✅ Deploy Stage: Deploying updated HTML with About section\n"
             }
         }
     }
 
     post {
         success {
-            echo '✅ Build ${BUILD_NUMBER} completed successfully!'
+            echo "🎉 SUCCESS: Build #${env.BUILD_ID} completed successfully!"
         }
         failure {
-            echo '❌ Build ${BUILD_NUMBER} failed. Check logs!'
+            echo "❌ FAILURE: Build #${env.BUILD_ID} failed."
         }
     }
 }
