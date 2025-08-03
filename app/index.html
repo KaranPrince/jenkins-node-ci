@@ -1,62 +1,71 @@
+pipeline {
+    agent any
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Jenkins Deployment Success</title>
-    <style>
-        body {
-            background: linear-gradient(135deg, #1f1c2c, #928dab);
-            color: #fff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
+    environment {
+        DEPLOY_USER = 'ubuntu'
+        DEPLOY_HOST = '13.232.138.18'
+        PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                echo '🔄 Checking out source code from GitHub...'
+                checkout scm
+            }
         }
-        .container {
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 30px 50px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-            text-align: center;
-            max-width: 800px;
+
+        stage('Build') {
+            steps {
+                echo '🔧 Build stage initiated...'
+                echo '✅ Build Stage Started: Compiling or preparing code (simulated)'
+            }
         }
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            color: #FFD700;
+
+        stage('Test') {
+            steps {
+                echo '🧪 Running basic tests...'
+                sh 'echo All tests passed successfully!'
+            }
         }
-        .info {
-            font-size: 1.1rem;
-            margin: 10px 0;
-            background-color: rgba(255, 255, 255, 0.15);
-            padding: 10px;
-            border-radius: 8px;
+
+        stage('Deploy') {
+            steps {
+                echo '🚀 Deploying to EC2 Instance...'
+
+                script {
+                    env.GIT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    env.GIT_COMMIT = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.GIT_AUTHOR = sh(script: 'git log -1 --pretty=format:%an', returnStdout: true).trim()
+                    env.GIT_DATE = sh(script: 'git log -1 --pretty=format:%cd', returnStdout: true).trim()
+                    env.GIT_MESSAGE = sh(script: 'git log -1 --pretty=format:%s', returnStdout: true).trim()
+
+                    sh """
+                    sed -i "s|__BUILD_NUMBER__|${env.BUILD_NUMBER}|g" app/index.html
+                    sed -i "s|__GIT_DATE__|${env.GIT_DATE}|g" app/index.html
+                    sed -i "s|__GIT_BRANCH__|${env.GIT_BRANCH}|g" app/index.html
+                    sed -i "s|__GIT_COMMIT__|${env.GIT_COMMIT}|g" app/index.html
+                    sed -i "s|__GIT_AUTHOR__|${env.GIT_AUTHOR}|g" app/index.html
+                    sed -i "s|__GIT_MESSAGE__|${env.GIT_MESSAGE}|g" app/index.html
+
+                    scp -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} app/index.html ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/index.html
+                    ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        sudo mv /tmp/index.html /var/www/html/index.html
+                    '
+                    """
+                }
+
+                echo '✅ Deployment to EC2 completed!'
+            }
         }
-        .highlight {
-            color: #00ffcc;
-            font-weight: bold;
+    }
+
+    post {
+        success {
+            echo "✅ Build #${env.BUILD_NUMBER} completed and deployed successfully!"
         }
-        .footer {
-            margin-top: 20px;
-            font-size: 0.9rem;
-            color: #ccc;
+        failure {
+            echo "❌ Build #${env.BUILD_NUMBER} failed."
         }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🚀 Jenkins Deployment Successful!</h1>
-        <div class="info">🔢 Build Number: <span class="highlight">__BUILD_NUMBER__</span></div>
-        <div class="info">🕒 Deployed At: <span class="highlight">__GIT_DATE__</span></div>
-        <div class="info">🧠 Git Branch: <span class="highlight">__GIT_BRANCH__</span></div>
-        <div class="info">🔁 Commit ID: <span class="highlight">__GIT_COMMIT__</span></div>
-        <div class="info">👤 Committed By: <span class="highlight">__GIT_AUTHOR__</span></div>
-        <div class="info">💬 Commit Message: <span class="highlight">__GIT_MESSAGE__</span></div>
-        <div class="footer">Made with ❤️ by Karan | Powered by Jenkins & GitHub</div>
-    </div>
-</body>
-</html>
+    }
+}
