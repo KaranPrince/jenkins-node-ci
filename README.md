@@ -2,26 +2,21 @@
 <!--![Jenkins Build](http://<JENKINS_URL>/buildStatus/icon?job=<JOB_NAME>&style=flat-square)-->
 <div align="center">
 
-<!-- 🔨 Project Info -->
 ### 🔨 Project Info
 ![Build Passing](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 ![Made With](https://img.shields.io/badge/Made%20With-Jenkins-blue?style=flat-square)
 ![Hosted On](https://img.shields.io/badge/Hosted%20On-AWS%20EC2-orange?style=flat-square)
-
 <br/>
 
-<!-- 📊 Repository Stats -->
 ### 📊 Repository Stats
 ![Repo Size](https://img.shields.io/github/repo-size/KaranPrince/jenkins-node-ci?style=flat-square)
 ![Last Commit](https://img.shields.io/github/last-commit/KaranPrince/jenkins-node-ci?style=flat-square)
 ![Open Issues](https://img.shields.io/github/issues/KaranPrince/jenkins-node-ci?style=flat-square)
 ![Stars](https://img.shields.io/github/stars/KaranPrince/jenkins-node-ci?style=flat-square)
 ![Forks](https://img.shields.io/github/forks/KaranPrince/jenkins-node-ci?style=flat-square)
-
 <br/>
 
-<!-- 💬 Community & Contribution -->
 ### 💬 Community & Contribution
 ![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)
 ![Contributions](https://img.shields.io/badge/contributions-welcome-blue?style=flat-square)
