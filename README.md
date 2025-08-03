@@ -1,5 +1,5 @@
 <!-- Build Status Badge from Jenkins -->
-```![Jenkins Build](http://13.232.138.18:8080/buildStatus/icon?job=<JOB_NAME>&style=flat-square)```
+<!--![Jenkins Build](http://<JENKINS_URL>/buildStatus/icon?job=<JOB_NAME>&style=flat-square)-->
 <div align="center">
 
 <!-- 🔨 Project Info -->
