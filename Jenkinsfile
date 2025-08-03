@@ -1,15 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        // Define placeholders for Git info
-        GIT_BRANCH = ''
-        GIT_COMMIT_HASH = ''
-        GIT_COMMIT_AUTHOR = ''
-        GIT_COMMIT_DATE = ''
-        GIT_COMMIT_MESSAGE = ''
-    }
-
     stages {
         stage('Checkout Code') {
             steps {
@@ -21,8 +12,7 @@ pipeline {
         stage('Build') {
             steps {
                 echo '🔧 Build stage initiated...'
-                echo '✅ Build Stage Started: Compiling or preparing code (simulated)'
-                // Simulate build or actual build steps here
+                echo '✅ Simulating build steps...'
             }
         }
 
@@ -33,39 +23,43 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
+        stage('Inject Git Info into HTML') {
             steps {
-                echo '🚀 Deploying to EC2 Instance...'
-                
-                // Fetch Git info
+                echo '📝 Injecting Git commit info into index.html...'
                 script {
-                    env.GIT_BRANCH = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                    env.GIT_COMMIT_HASH = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                    env.GIT_COMMIT_AUTHOR = sh(script: 'git log -1 --pretty=format:"%an"', returnStdout: true).trim()
-                    env.GIT_COMMIT_DATE = sh(script: 'git log -1 --pretty=format:"%cd"', returnStdout: true).trim()
-                    env.GIT_COMMIT_MESSAGE = sh(script: 'git log -1 --pretty=format:"%s"', returnStdout: true).trim()
+                    def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    def hash = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+                    def author = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
+                    def date = sh(script: "git log -1 --pretty=format:'%cd'", returnStdout: true).trim()
+                    def message = sh(script: "git log -1 --pretty=format:'%s'", returnStdout: true).trim()
+
+                    sh """
+                        sed -i 's|\\\$\\{GIT_BRANCH\\}|${branch}|' index.html
+                        sed -i 's|\\\$\\{GIT_COMMIT\\}|${hash}|' index.html
+                        sed -i 's|\\\$\\{GIT_AUTHOR\\}|${author}|' index.html
+                        sed -i 's|\\\$\\{GIT_DATE\\}|${date}|' index.html
+                        sed -i 's|\\\$\\{GIT_MESSAGE\\}|${message}|' index.html
+                        sed -i 's|\\\$\\{BUILD_NUMBER\\}|${env.BUILD_NUMBER}|' index.html
+                    """
                 }
+            }
+        }
 
-                // Replace placeholders in index.html
-                sh """
-                    sed -i 's|\\\$\\{GIT_BRANCH\\}|${GIT_BRANCH}|' index.html
-                    sed -i 's|\\\$\\{GIT_COMMIT_HASH\\}|${GIT_COMMIT_HASH}|' index.html
-                    sed -i 's|\\\$\\{GIT_COMMIT_AUTHOR\\}|${GIT_COMMIT_AUTHOR}|' index.html
-                    sed -i 's|\\\$\\{GIT_COMMIT_DATE\\}|${GIT_COMMIT_DATE}|' index.html
-                    sed -i 's|\\\$\\{GIT_COMMIT_MESSAGE\\}|${GIT_COMMIT_MESSAGE}|' index.html
-                """
-
-                echo "✅ Git commit info injected successfully into index.html"
+        stage('Deploy to Web Server') {
+            steps {
+                echo '🚀 Deploying index.html to web root...'
+                // Change this path if needed
+                sh 'sudo cp index.html /var/www/html/index.html'
             }
         }
     }
 
     post {
         success {
-            echo "🎉 Build #${BUILD_NUMBER} completed successfully!"
+            echo "✅ Deployment completed successfully!"
         }
         failure {
-            echo "❌ Build #${BUILD_NUMBER} failed."
+            echo "❌ Deployment failed."
         }
     }
 }
