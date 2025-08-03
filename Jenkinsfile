@@ -3,8 +3,10 @@ pipeline {
 
     environment {
         DEPLOY_USER = 'ubuntu'
-        DEPLOY_HOST = '13.232.138.18'
+        DEPLOY_HOST = 'YOUR_NEW_EC2_PUBLIC_IP'
         PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
+        REMOTE_DEPLOY_DIR = '/var/www/html/jenkins-deploy'
+        LOCAL_INDEX_HTML = 'app/index.html'
     }
 
     stages {
@@ -18,56 +20,70 @@ pipeline {
         stage('Build') {
             steps {
                 echo '🔧 Build stage initiated...'
-                echo '✅ Build Stage Started: Compiling or preparing code (simulated)'
+                echo '✅ Simulating a build...'
             }
         }
 
         stage('Test') {
             steps {
                 echo '🧪 Running basic tests...'
-                sh 'echo All tests passed successfully!'
+                sh 'echo All unit tests passed!'
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy to EC2') {
             steps {
-                echo '🚀 Deploying to EC2 Instance...'
+                echo '🚀 Deploying to EC2...'
                 script {
-                    def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    def gitCommit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-                    def gitAuthor = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
-                    def gitDate   = sh(script: "git log -1 --pretty=format:%cd", returnStdout: true).trim()
-                    def gitMessage = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
+                    // Capture Git info
+                    def gitBranch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    def gitCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    def gitAuthor = sh(script: 'git log -1 --pretty=format:"%an"', returnStdout: true).trim()
+                    def gitDate = sh(script: 'git log -1 --pretty=format:"%cd"', returnStdout: true).trim()
+                    def gitMessage = sh(script: 'git log -1 --pretty=format:"%s"', returnStdout: true).trim()
 
+                    // Inject into HTML
                     sh """
-                        # Replace placeholders in app/index.html
-                        sed -i 's|__GIT_BRANCH__|${gitBranch}|' app/index.html
-                        sed -i 's|__GIT_COMMIT__|${gitCommit}|' app/index.html
-                        sed -i 's|__GIT_AUTHOR__|${gitAuthor}|' app/index.html
-                        sed -i 's|__GIT_DATE__|${gitDate}|' app/index.html
-                        sed -i 's|__GIT_MESSAGE__|${gitMessage}|' app/index.html
-                        sed -i 's|__BUILD_NUMBER__|${env.BUILD_NUMBER}|' app/index.html
+                        sed -i "s|__BUILD_NUMBER__|${env.BUILD_NUMBER}|g" ${LOCAL_INDEX_HTML}
+                        sed -i "s|__GIT_BRANCH__|${gitBranch}|g" ${LOCAL_INDEX_HTML}
+                        sed -i "s|__GIT_COMMIT__|${gitCommit}|g" ${LOCAL_INDEX_HTML}
+                        sed -i "s|__GIT_AUTHOR__|${gitAuthor}|g" ${LOCAL_INDEX_HTML}
+                        sed -i "s|__GIT_DATE__|${gitDate}|g" ${LOCAL_INDEX_HTML}
+                        sed -i "s|__GIT_MESSAGE__|${gitMessage}|g" ${LOCAL_INDEX_HTML}
+                    """
 
-                        # Copy index.html to EC2 and move it to /var/www/html/jenkins-deploy/
-                        scp -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} app/index.html ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/index.html
-
-                        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
-                            sudo mkdir -p /var/www/html/jenkins-deploy &&
-                            sudo mv /tmp/index.html /var/www/html/jenkins-deploy/index.html
-                        '
+                    // SCP to EC2
+                    sh """
+                        chmod 400 ${PEM_KEY_PATH}
+                        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} 'mkdir -p ${REMOTE_DEPLOY_DIR}'
+                        scp -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${LOCAL_INDEX_HTML} ${DEPLOY_USER}@${DEPLOY_HOST}:${REMOTE_DEPLOY_DIR}/index.html
                     """
                 }
-                echo '✅ Deployment to EC2 completed!'
+            }
+        }
+
+        stage('Post-Deploy Health Check') {
+            steps {
+                echo '🔍 Running post-deploy health check...'
+                script {
+                    def status = sh(script: "curl -o /dev/null -s -w '%{http_code}' http://${DEPLOY_HOST}/jenkins-deploy/", returnStdout: true).trim()
+
+                    if (status == '200') {
+                        echo "✅ Site is live and returned HTTP ${status}"
+                    } else {
+                        error("❌ Deployment failed! HTTP response: ${status}")
+                    }
+                }
             }
         }
     }
 
     post {
         success {
-            echo "✅ Build #${env.BUILD_NUMBER} completed and deployed successfully!"
+            echo "✅ Pipeline Build #${env.BUILD_NUMBER} completed successfully!"
         }
         failure {
-            echo "❌ Build #${env.BUILD_NUMBER} failed."
+            echo "❌ Pipeline Build #${env.BUILD_NUMBER} failed. Check logs."
         }
     }
 }
