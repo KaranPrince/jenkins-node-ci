@@ -36,6 +36,7 @@
 ![Visitors](https://visitor-badge.laobi.icu/badge?page_id=KaranPrince.jenkins-node-ci)
 
 </div>
+
 ## 🌟 Project Overview
 
 Welcome to my **end-to-end CI/CD DevOps project**! This project demonstrates a complete **CI/CD pipeline** using:
