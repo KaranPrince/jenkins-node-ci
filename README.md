@@ -1,92 +1,84 @@
-# Jenkins Node.js CI/CD Pipeline 🚀
+<h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
 
-This project demonstrates a complete CI/CD pipeline using **Jenkins**, triggered by GitHub Webhook and deployed to an **EC2 Ubuntu server**. It is designed as a beginner-friendly but industry-ready DevOps showcase.
-
----
-
-## 🔧 Tech Stack
-
-- **Version Control**: Git & GitHub
-- **CI/CD Tool**: Jenkins (Declarative Pipeline)
-- **Cloud**: AWS EC2 (Ubuntu)
-- **Scripting**: Shell
-- **OS**: Linux (Ubuntu 22.04)
-- **Language**: Node.js (simulated project)
+<p align="center">
+  <img src="https://img.shields.io/badge/Built%20With-Jenkins-blue?style=for-the-badge&logo=jenkins&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Powered%20By-AWS-orange?style=for-the-badge&logo=amazon-aws&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Hosted%20On-EC2-brightgreen?style=for-the-badge&logo=amazon-ec2&logoColor=white"/>
+</p>
 
 ---
 
-## ✅ CI/CD Workflow Overview
+## 🌟 Project Overview
 
-### 1️⃣ **Trigger**
-- Webhook triggers Jenkins on every push to `master` branch.
+Welcome to my **end-to-end CI/CD DevOps project**!  
+This setup demonstrates how to:
+- 📥 Automatically **pull code** from GitHub
+- 🧪 **Test** it on Jenkins
+- 🚢 **Deploy it live** on an AWS EC2 instance  
+- 🔁 All triggered by a **GitHub Webhook** 🎯
 
-### 2️⃣ **Pipeline Stages**
-- `Checkout`: Pull latest code from GitHub
-- `Build`: Simulate code compilation/building
-- `Test`: Run test stage (`echo "All tests passed"`)
-- `Deploy`: Copy final files to EC2 instance using `scp` and `pem` authentication
-
-### 3️⃣ **Post-Build**
-- Custom console logs for easy debugging & tracking
-- Dynamic `BUILD_NUMBER` for traceability
+This is a real-time deployment pipeline built from scratch, fully automated using **Jenkins Declarative Pipeline**.
 
 ---
 
-## 📂 Jenkinsfile
+## 🧰 Tech Stack
 
-```groovy
-pipeline {
-    agent any
-    environment {
-        DEPLOY_USER = 'ubuntu'
-        DEPLOY_HOST = 'YOUR_EC2_PUBLIC_IP'
-        PEM_FILE = '/var/lib/jenkins/jenkins-key.pem'
-    }
-    stages {
-        stage('Checkout') {
-            steps {
-                echo '🔄 Checking out source code...'
-                checkout scm
-            }
-        }
-        stage('Build') {
-            steps {
-                echo '🔧 Build stage initiated...'
-                echo '✅ Build successful!'
-            }
-        }
-        stage('Test') {
-            steps {
-                echo '🧪 Running tests...'
-                sh 'echo All tests passed successfully!'
-            }
-        }
-        stage('Deploy') {
-            steps {
-                echo '🚀 Deploying to EC2...'
-                sh '''
-                scp -o StrictHostKeyChecking=no -i $PEM_FILE index.html $DEPLOY_USER@$DEPLOY_HOST:/var/www/html/index.html
-                '''
-                echo "✅ Build #${BUILD_NUMBER} deployed to EC2: http://${DEPLOY_HOST}"
-            }
-        }
-    }
-    post {
-        success {
-            echo "✅ Build #${BUILD_NUMBER} completed successfully!"
-        }
-        failure {
-            echo "❌ Build failed. Check logs for details."
-        }
-    }
-}
+| Category              | Tools / Services                                  |
+|----------------------|---------------------------------------------------|
+| CI/CD Pipeline        | Jenkins 🧰                                          |
+| Version Control       | Git & GitHub 🐙                                    |
+| Deployment Server     | AWS EC2 (Ubuntu) 💻                                 |
+| Auth & Security       | SSH using `.pem` key 🔐                            |
+| Hosting Path          | `/var/www/html/jenkins-deploy` 🌍                |
+| Script Language       | Shell (Bash) 🐚                                     |
 
-# Webhook Test
+---
 
-✅ This commit is used to trigger Jenkins via GitHub Webhook!
+## 📂 Project Structure
 
-# Webhook Trigger Confirmation
-
-✅ Webhook Triggering the Jenkins pipeline...
+jenkins-node-ci/
+├── Jenkinsfile 💡 (Declarative pipeline logic)
+├── README.md 📘 (You're reading it!)
+└── index.html 🖼️ (Auto-created during deploy)
 
 
+---
+
+## 🛠️ Jenkins Pipeline Workflow
+
+1. 🟢 **Code Pushed to GitHub**  
+2. 🔔 **Webhook triggers Jenkins Job**  
+3. 🧱 **Build & Test Stage**  
+4. 🚀 **SSH into EC2 & Deploy HTML**  
+5. ✅ **Post Build Summary**
+
+### ✨ Final Output:
+> Visit: `http://<your-ec2-ip>/jenkins-deploy/`  
+> You’ll see:
+<h1>Deployed via Jenkins from GitHub Webhook 🚀</h1>
+
+💡 Future Improvements
+🐳 Add Docker build/push stage
+
+🧪 Add unit test coverage with JUnit
+
+🧰 Setup Prometheus + Grafana for monitoring
+
+🏗️ Add staging & production environments
+
+💬 Integrate Slack/Mattermost for pipeline alerts
+
+
+🧑‍💻 Author
+Karan S
+💼 DevOps | Cloud | Automation
+🌐 LinkedIn
+📬 karans.appdev@gmail.com
+
+🙌 Support
+If you found this useful:
+⭐ Star this repo
+🔁 Fork & try it yourself
+💬 Drop your feedback
+
+<p align="center"> Made with ❤️ by Karan S | Powered by ☁️ AWS + ⚙️ Jenkins </p> ```
