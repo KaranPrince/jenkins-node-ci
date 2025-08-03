@@ -1,7 +1,11 @@
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)
-![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
-![Made With](https://img.shields.io/badge/Made%20With-Jenkins-blue?style=flat-square)
+<div align="center">
+
+![Build Status](https://img.shields.io/badge/build-passing-brightgreen?style=flat-square)  
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)  
+![Made With](https://img.shields.io/badge/Made%20With-Jenkins-blue?style=flat-square)  
 ![Hosted On](https://img.shields.io/badge/Hosted%20On-AWS%20EC2-orange?style=flat-square)
+
+</div>
 
 <h1 align="center">🚀 Jenkins CI/CD Pipeline with GitHub & EC2 Deployment 🌐</h1>
 
@@ -94,9 +98,9 @@ Git Metadata shown in a styled HTML page.
 
 ## 📸 Screenshots
 
-| 🔗 GitHub Webhook Setup | ⚙️ Jenkins Pipeline | 🌐 EC2 Deployed Output |
+| 🔗 GitHub Webhook settings | ⚙️ Jenkins Pipeline - console output | 🌐 EC2 Deployed Output |
 |-------------------------|--------------------|------------------------|
-| ![](assets/webhook.png) | ![](assets/pipeline.png) | ![](assets/output.png) |
+| ![](assets/github-webhook-settings.png) | ![](assets/jenkins-build-output.png) | ![](assets/deployment-success-page.png) |
 
 ---
 
