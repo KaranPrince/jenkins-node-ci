@@ -32,17 +32,35 @@ pipeline {
         stage('Deploy') {
     steps {
         echo '🚀 Deploying to EC2 Instance...'
+
+        script {
+            def gitBranch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+            def gitCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+            def gitAuthor = sh(script: 'git log -1 --pretty=format:\'%an\'', returnStdout: true).trim()
+            def gitDate = sh(script: 'git log -1 --pretty=format:\'%cd\'', returnStdout: true).trim()
+            def gitMessage = sh(script: 'git log -1 --pretty=format:\'%s\'', returnStdout: true).trim()
+
+            sh """
+            sed -i 's|\\\$\\{GIT_BRANCH\\}|${gitBranch}|' index.html
+            sed -i 's|\\\$\\{GIT_COMMIT\\}|${gitCommit}|' index.html
+            sed -i 's|\\\$\\{GIT_AUTHOR\\}|${gitAuthor}|' index.html
+            sed -i 's|\\\$\\{GIT_DATE\\}|${gitDate}|' index.html
+            sed -i 's|\\\$\\{GIT_MESSAGE\\}|${gitMessage}|' index.html
+            """
+        }
+
         sh """
-        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} "
+        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
             sudo mkdir -p /var/www/html/jenkins-deploy &&
-            sudo rm -rf /var/www/html/jenkins-deploy/* &&
-            echo '<h1>Deployed via Jenkins from GitHub Webhook 🚀</h1>' | sudo tee /var/www/html/jenkins-deploy/index.html
-        "
+            sudo rm -rf /var/www/html/jenkins-deploy/*'
+        scp -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} index.html ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/index.html
+        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
+            sudo mv /tmp/index.html /var/www/html/jenkins-deploy/index.html'
         """
+
         echo '✅ Deployment to EC2 completed!'
     }
 }
-
     }
 
     post {
