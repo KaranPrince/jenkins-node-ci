@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    environment {
+        DEPLOY_USER = 'ubuntu'
+        DEPLOY_HOST = 'your.ec2.public.ip' // Replace or use a parameter
+        PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
+    }
+
     stages {
         stage('Checkout Code') {
             steps {
@@ -27,36 +33,41 @@ pipeline {
             steps {
                 echo '📝 Injecting Git commit info into index.html...'
                 script {
-                    def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    def hash = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-                    def author = sh(script: "git log -1 --pretty=format:'%an'", returnStdout: true).trim()
-                    def date = sh(script: "git log -1 --pretty=format:'%cd'", returnStdout: true).trim()
-                    def message = sh(script: "git log -1 --pretty=format:'%s'", returnStdout: true).trim()
+                    def gitBranch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+                    def gitCommit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+                    def gitAuthor = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
+                    def gitDate = sh(script: "git log -1 --pretty=format:%cd", returnStdout: true).trim()
+                    def gitMessage = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
+                    def buildNumber = env.BUILD_NUMBER
 
-                    sh """
-                        sed -i 's|\\\$\\{GIT_BRANCH\\}|${branch}|' index.html
-                        sed -i 's|\\\$\\{GIT_COMMIT\\}|${hash}|' index.html
-                        sed -i 's|\\\$\\{GIT_AUTHOR\\}|${author}|' index.html
-                        sed -i 's|\\\$\\{GIT_DATE\\}|${date}|' index.html
-                        sed -i 's|\\\$\\{GIT_MESSAGE\\}|${message}|' index.html
-                        sed -i 's|\\\$\\{BUILD_NUMBER\\}|${env.BUILD_NUMBER}|' index.html
-                    """
+                    sh "sed -i 's|\\\$\\{BUILD_NUMBER\\}|${buildNumber}|' index.html"
+                    sh "sed -i 's|\\\$\\{GIT_BRANCH\\}|${gitBranch}|' index.html"
+                    sh "sed -i 's|\\\$\\{GIT_COMMIT\\}|${gitCommit}|' index.html"
+                    sh "sed -i 's|\\\$\\{GIT_AUTHOR\\}|${gitAuthor}|' index.html"
+                    sh "sed -i 's|\\\$\\{GIT_DATE\\}|${gitDate}|' index.html"
+                    sh "sed -i 's|\\\$\\{GIT_MESSAGE\\}|${gitMessage}|' index.html"
                 }
             }
         }
 
         stage('Deploy to Web Server') {
             steps {
-                echo '🚀 Deploying index.html to web root...'
-                // Change this path if needed
-                sh 'sudo cp index.html /var/www/html/index.html'
+                echo '🚀 Deploying to EC2 Instance...'
+                sh """
+                ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${DEPLOY_USER}@${DEPLOY_HOST} '
+                    sudo mkdir -p /var/www/html/jenkins-deploy &&
+                    sudo rm -rf /var/www/html/jenkins-deploy/* &&
+                    sudo cp index.html /var/www/html/jenkins-deploy/index.html
+                '
+                """
+                echo '✅ Deployment complete!'
             }
         }
     }
 
     post {
         success {
-            echo "✅ Deployment completed successfully!"
+            echo "✅ Build #${env.BUILD_NUMBER} completed and deployed successfully!"
         }
         failure {
             echo "❌ Deployment failed."
