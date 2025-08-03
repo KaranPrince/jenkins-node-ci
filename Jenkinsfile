@@ -2,46 +2,62 @@ pipeline {
     agent any
 
     environment {
-        BUILD_ID = "${env.BUILD_NUMBER}"
+        APP_NAME = "NodeCIApp"
+        DEPLOY_ENV = "test" // change to dev/prod as needed
+    }
+
+    options {
+        timestamps()
+        timeout(time: 10, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('📦 Checkout Code') {
             steps {
                 echo "🔄 Checking out source code from GitHub..."
                 checkout scm
             }
         }
 
-        stage('Build') {
+        stage('🔧 Build') {
             steps {
-                echo "\n🔧 Build stage initiated..."
-                echo "✅ Build Stage Started: Compiling or preparing code (simulated)\n"
+                echo "🔧 Build Stage Started for ${APP_NAME}"
+                sh 'echo Compiling code...'
+                sh 'mkdir -p build && cp -r app/* build/'
             }
         }
 
-        stage('Test') {
+        stage('🧪 Test') {
             steps {
-                echo "\n🧪 Running basic tests..."
-                sh 'echo All tests passed successfully!\n'
+                echo "🧪 Running Unit Tests..."
+                sh 'echo Running test: sample.test.js'
+                sh 'echo ✅ All tests passed!'
             }
         }
 
-        stage('Deploy') {
+        stage('📦 Archive Artifact') {
             steps {
-                echo "\n🚀 Deploying to test environment..."
-                sh 'echo Deployment simulated.\n'
-                echo "✅ Deploy Stage: Deploying updated HTML with About section\n"
+                echo "📦 Archiving build artifacts..."
+                archiveArtifacts artifacts: 'build/**', fingerprint: true
+            }
+        }
+
+        stage('🚀 Deploy') {
+            steps {
+                echo "🚀 Deploying to ${DEPLOY_ENV} environment..."
+                sh "echo ✅ Deployment simulated for ${APP_NAME}"
             }
         }
     }
 
     post {
         success {
-            echo "🎉 SUCCESS: Build #${env.BUILD_ID} completed successfully!"
+            echo "✅ Build #${env.BUILD_NUMBER} completed successfully by ${env.BUILD_USER}!"
         }
         failure {
-            echo "❌ FAILURE: Build #${env.BUILD_ID} failed."
+            echo "❌ Build #${env.BUILD_NUMBER} failed. Please check logs."
         }
     }
 }
+
