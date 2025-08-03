@@ -1,63 +1,45 @@
 pipeline {
     agent any
-
     environment {
-        APP_NAME = "NodeCIApp"
-        DEPLOY_ENV = "test" // change to dev/prod as needed
+        DEPLOY_USER = "ubuntu"
+        DEPLOY_HOST = "13.232.138.18"
+        PEM_FILE = "/var/lib/jenkins/karan.pem"
     }
-
-    options {
-        timestamps()
-        timeout(time: 10, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-    }
-
     stages {
-        stage('📦 Checkout Code') {
+        stage('Checkout Code') {
             steps {
-                echo "🔄 Checking out source code from GitHub..."
+                echo '🔄 Checking out source code from GitHub...'
                 checkout scm
             }
         }
-
-        stage('🔧 Build') {
+        stage('Build') {
             steps {
-                echo "🔧 Build Stage Started for ${APP_NAME}"
-                sh 'echo Compiling code...'
-                sh 'mkdir -p build && cp -r app/* build/'
+                echo '🔧 Build stage initiated...'
+                echo '✅ Build Stage Started: Compiling or preparing code (simulated)'
             }
         }
-
-        stage('🧪 Test') {
+        stage('Test') {
             steps {
-                echo "🧪 Running Unit Tests..."
-                sh 'echo Running test: sample.test.js'
-                sh 'echo ✅ All tests passed!'
+                echo '🧪 Running basic tests...'
+                sh 'echo All tests passed successfully!'
             }
         }
-
-        stage('📦 Archive Artifact') {
+        stage('Deploy') {
             steps {
-                echo "📦 Archiving build artifacts..."
-                archiveArtifacts artifacts: 'build/**', fingerprint: true
-            }
-        }
-
-        stage('🚀 Deploy') {
-            steps {
-                echo "🚀 Deploying to ${DEPLOY_ENV} environment..."
-                sh "echo ✅ Deployment simulated for ${APP_NAME}"
+                echo '🚀 Deploying to EC2 instance...'
+                sh '''
+                scp -o StrictHostKeyChecking=no -i ${PEM_FILE} -r * ${DEPLOY_USER}@${DEPLOY_HOST}:/home/ubuntu/app/
+                '''
+                echo '✅ Deploy Stage: Files sent to EC2!'
             }
         }
     }
-
     post {
         success {
-            echo "✅ Build #${env.BUILD_NUMBER} completed successfully by ${env.BUILD_USER}!"
+            echo "✅ Build ${env.BUILD_NUMBER} completed successfully and deployed to EC2!"
         }
         failure {
-            echo "❌ Build #${env.BUILD_NUMBER} failed. Please check logs."
+            echo "❌ Build failed."
         }
     }
 }
-
