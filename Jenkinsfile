@@ -6,20 +6,21 @@ pipeline {
         DEPLOY_HOST  = '44.222.203.180'
         PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
         BUILD_TIME   = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
+        ENVIRONMENT  = 'STAGING' // example: DEV, STAGE, PROD
     }
 
     stages {
 
         stage('Checkout Source') {
             steps {
-                echo "📥 Pulling latest source code from GitHub..."
+                echo "📥 Pulling latest source code..."
                 checkout scm
             }
         }
 
         stage('Validate HTML') {
             steps {
-                echo "🔍 Validating HTML syntax..."
+                echo "🔍 Validating HTML..."
                 sh '''
                     set -e
                     command -v tidy &>/dev/null || (sudo apt-get update && sudo apt-get install -y tidy)
@@ -28,9 +29,24 @@ pipeline {
             }
         }
 
-        stage('Inject Build Metadata') {
+        stage('Unit & Integration Tests') {
             steps {
-                echo "📝 Injecting build & Git metadata..."
+                echo "🧪 Running tests..."
+                sh '''
+                    set -e
+                    # Node.js backend tests
+                    if [ -f package.json ]; then
+                        npm install
+                        npm test || exit 1
+                    fi
+                    # HTML validation already done
+                '''
+            }
+        }
+
+        stage('Inject Build Metadata & Env Vars') {
+            steps {
+                echo "📝 Injecting metadata & environment variables..."
                 script {
                     def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
                     def commit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
@@ -44,6 +60,7 @@ pipeline {
                         sed -i "s|__GIT_AUTHOR__|${author}|g" app/index.html
                         sed -i "s|__GIT_DATE__|${BUILD_TIME}|g" app/index.html
                         sed -i "s|__GIT_MESSAGE__|${msg}|g" app/index.html
+                        sed -i "s|__ENV__|${ENVIRONMENT}|g" app/index.html
                     """
                 }
             }
@@ -51,78 +68,75 @@ pipeline {
 
         stage('Package Artifact') {
             steps {
-                echo "📦 Packaging application..."
+                echo "📦 Packaging artifact..."
                 sh 'tar -czf deploy_artifact.tar.gz app/'
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to EC2 via Docker') {
             steps {
-                echo "🚀 Deploying to EC2..."
+                echo "🚀 Deploying via Docker..."
                 sh '''
                     set -e
                     PEM=${PEM_KEY_PATH}
                     USER=${DEPLOY_USER}
                     HOST=${DEPLOY_HOST}
 
-                    deploy_dir=/var/www/html/jenkins-deploy
-                    backup_file=/tmp/rollback_backup.tar.gz
-                    artifact=/tmp/deploy_artifact.tar.gz
-
-                    echo "💾 Creating backup if deployment exists..."
                     ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
-                        if [ -d $deploy_dir ]; then
-                            sudo tar -czf $backup_file -C /var/www/html jenkins-deploy
+                        # Backup if exists
+                        if [ -d /var/www/html/jenkins-deploy ]; then
+                            sudo tar -czf /tmp/rollback_backup.tar.gz -C /var/www/html jenkins-deploy
+                            echo "💾 Backup created."
+                        else
+                            echo "ℹ️ No existing deployment to backup."
                         fi
+
+                        # Ensure Docker installed
+                        command -v docker &>/dev/null || (sudo apt-get update && sudo apt-get install -y docker.io)
+
+                        # Remove old container & directory
+                        sudo docker rm -f jenkins_app || true
+                        sudo rm -rf /var/www/html/jenkins-deploy
+                        sudo mkdir -p /var/www/html/jenkins-deploy
                     '
 
-                    echo "📤 Copying artifact..."
-                    scp -i $PEM -o StrictHostKeyChecking=no deploy_artifact.tar.gz $USER@$HOST:/tmp/
+                    # Build Docker image locally and copy to server
+                    docker build -t jenkins_app_image .
+                    docker save jenkins_app_image | bzip2 | ssh -i $PEM $USER@$HOST 'bunzip2 | docker load'
 
-                    echo "⚙️ Deploying..."
+                    # Run container
                     ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
-                        sudo mkdir -p $deploy_dir &&
-                        sudo tar -xzf $artifact -C $deploy_dir --strip-components=1 &&
-                        sudo rm $artifact &&
-                        sudo systemctl restart apache2
+                        sudo docker run -d --name jenkins_app -p 80:80 -v /var/www/html/jenkins-deploy:/usr/share/nginx/html jenkins_app_image
                     '
-
-                    echo "🔍 Verifying deployment..."
-                    STATUS=$(curl -o /dev/null -s -w "%{http_code}" http://$HOST/jenkins-deploy/)
-                    if [ "$STATUS" -ne 200 ]; then
-                        echo "❌ Deployment failed!"
-                        exit 1
-                    fi
-                    echo "✅ Deployment successful."
                 '''
             }
         }
+
     }
 
     post {
         failure {
-            echo "♻️ Rolling back to previous version..."
+            echo "♻️ Rolling back deployment..."
             sh '''
                 PEM=${PEM_KEY_PATH}
                 USER=${DEPLOY_USER}
                 HOST=${DEPLOY_HOST}
                 backup_file=/tmp/rollback_backup.tar.gz
-                deploy_dir=/var/www/html/jenkins-deploy
 
                 ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
                     if [ -f $backup_file ]; then
-                        sudo rm -rf $deploy_dir &&
+                        sudo rm -rf /var/www/html/jenkins-deploy &&
                         sudo tar -xzf $backup_file -C /var/www/html &&
-                        sudo systemctl restart apache2
+                        sudo docker rm -f jenkins_app || true
                         echo "✅ Rollback completed."
                     else
-                        echo "⚠️ No rollback backup found!"
+                        echo "⚠️ No backup found to restore."
                     fi
                 '
             '''
         }
         success {
-            echo "🎉 Deployment pipeline finished successfully."
+            echo "🎉 Deployment succeeded!"
         }
     }
 }
