@@ -5,11 +5,10 @@ pipeline {
         DEPLOY_USER  = 'ubuntu'
         DEPLOY_HOST  = '44.222.203.180'
         PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
-        BUILD_TIME   = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
-        ENVIRONMENT  = 'STAGING'
         DEPLOY_DIR   = '/var/www/html/jenkins-deploy'
         BACKUP_FILE  = '/tmp/rollback_backup.tar.gz'
-        DOCKER_IMAGE = "jenkins_app:${BUILD_NUMBER}"
+        BUILD_TIME   = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
+        ENVIRONMENT  = 'STAGING'
     }
 
     stages {
@@ -18,12 +17,11 @@ pipeline {
             steps {
                 echo "⚙️ Ensuring Node.js, NPM, and Docker are available..."
                 sh '''
-                    set -e
-                    command -v node &>/dev/null || (curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs)
-                    command -v npm &>/dev/null || (sudo apt-get install -y npm)
+                    command -v node
+                    command -v npm
+                    command -v docker
                     node -v
                     npm -v
-                    command -v docker &>/dev/null || (sudo apt-get install -y docker.io)
                     docker --version
                 '''
             }
@@ -40,9 +38,11 @@ pipeline {
             steps {
                 echo "🔍 Validating HTML..."
                 sh '''
-                    set -e
-                    command -v tidy &>/dev/null || sudo apt-get install -y tidy
-                    tidy -qe app/index.html
+                    if ! command -v tidy &> /dev/null; then
+                        sudo apt-get update
+                        sudo apt-get install -y tidy
+                    fi
+                    tidy -qe app/index.html || true
                 '''
             }
         }
@@ -51,8 +51,10 @@ pipeline {
             steps {
                 echo "🧪 Running unit & integration tests..."
                 sh '''
-                    set -e
-                    [ -f package.json ] && npm install && npm test || echo "⚠️ No Node.js project detected"
+                    if [ -f package.json ]; then
+                        npm install
+                        npm test
+                    fi
                 '''
             }
         }
@@ -67,13 +69,13 @@ pipeline {
                     def msg    = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
 
                     sh """
-                        sed -i "s|__BUILD_NUMBER__|${env.BUILD_NUMBER}|g" app/index.html
-                        sed -i "s|__GIT_BRANCH__|${branch}|g" app/index.html
-                        sed -i "s|__GIT_COMMIT__|${commit}|g" app/index.html
-                        sed -i "s|__GIT_AUTHOR__|${author}|g" app/index.html
-                        sed -i "s|__GIT_DATE__|${BUILD_TIME}|g" app/index.html
-                        sed -i "s|__GIT_MESSAGE__|${msg}|g" app/index.html
-                        sed -i "s|__ENVIRONMENT__|${ENVIRONMENT}|g" app/index.html
+                        sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
+                        sed -i 's|__GIT_BRANCH__|${branch}|g' app/index.html
+                        sed -i 's|__GIT_COMMIT__|${commit}|g' app/index.html
+                        sed -i 's|__GIT_AUTHOR__|${author}|g' app/index.html
+                        sed -i 's|__GIT_DATE__|${BUILD_TIME}|g' app/index.html
+                        sed -i 's|__GIT_MESSAGE__|${msg}|g' app/index.html
+                        sed -i 's|__ENVIRONMENT__|${ENVIRONMENT}|g' app/index.html
                     """
                 }
             }
@@ -89,66 +91,63 @@ pipeline {
         stage('Deploy to EC2 via Docker') {
             steps {
                 echo "🚀 Deploying Docker container to EC2..."
-                sh '''
-                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                sh """
+                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
                         sudo mkdir -p ${DEPLOY_DIR}
-                        # Backup existing deployment container
-                        if [ -f ${BACKUP_FILE} ]; then sudo rm -f ${BACKUP_FILE}; fi
+
+                        # Backup existing container if running
                         if sudo docker ps -q -f name=jenkins_app >/dev/null 2>&1; then
-                            sudo docker commit jenkins_app backup_jenkins_app:${BUILD_NUMBER} &&
+                            sudo docker commit jenkins_app backup_jenkins_app:${BUILD_NUMBER}
                             sudo docker save -o ${BACKUP_FILE} backup_jenkins_app:${BUILD_NUMBER}
+                            sudo docker rm -f jenkins_app
                         fi
-                        sudo docker rm -f jenkins_app || true
-                    '
+                    "
 
-                    # Build Docker image locally
-                    docker build -t ${DOCKER_IMAGE} .
-
-                    # Save & transfer Docker image to EC2
-                    docker save ${DOCKER_IMAGE} | bzip2 | ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'bunzip2 | sudo docker load'
-
-                    # Run container on EC2
-                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        sudo docker run -d --name jenkins_app -p 80:80 ${DOCKER_IMAGE}
-                    '
-                '''
+                    # Build new Docker image on EC2
+                    scp -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no deploy_artifact.tar.gz ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/
+                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+                        cd /tmp
+                        rm -rf app && tar -xzf deploy_artifact.tar.gz
+                        docker build -t jenkins_app:latest .
+                        docker run -d --name jenkins_app -p 80:80 jenkins_app:latest
+                    "
+                """
             }
         }
 
         stage('Post-Deploy Verification') {
             steps {
-                echo "🔍 Running deployment verification..."
-                sh '''
-                    STATUS_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/)
-                    if [ "$STATUS_CODE" -ne 200 ]; then
+                echo "🔍 Running post-deployment health check..."
+                sh """
+                    STATUS_CODE=\$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/)
+                    if [ "\$STATUS_CODE" -ne 200 ]; then
                         echo "❌ Deployment verification failed!"
                         exit 1
                     fi
                     echo "✅ Deployment verification passed."
-                '''
+                """
             }
         }
-
     }
 
     post {
         failure {
-            echo "♻️ Rollback deployment..."
-            sh '''
-                ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+            echo "♻️ Rolling back deployment..."
+            sh """
+                ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
                     if [ -f ${BACKUP_FILE} ]; then
-                        sudo docker load -i ${BACKUP_FILE}
-                        sudo docker rm -f jenkins_app || true
-                        sudo docker run -d --name jenkins_app -p 80:80 backup_jenkins_app:${BUILD_NUMBER}
-                        echo "✅ Rollback completed."
+                        docker load -i ${BACKUP_FILE}
+                        docker rm -f jenkins_app || true
+                        docker run -d --name jenkins_app -p 80:80 backup_jenkins_app:${BUILD_NUMBER}
+                        echo '✅ Rollback completed.'
                     else
-                        echo "⚠️ No backup found to restore."
+                        echo '⚠️ No backup found to restore.'
                     fi
-                '
-            '''
+                "
+            """
         }
         success {
-            echo "✅ Pipeline completed successfully."
+            echo "✅ Deployment pipeline completed successfully."
         }
     }
 }
