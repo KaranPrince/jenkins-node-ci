@@ -4,4 +4,5 @@ npm-debug.log
 .gitignore
 Jenkinsfile
 Dockerfile
-README.md
+deploy.env
+/tmp
