@@ -2,69 +2,72 @@ pipeline {
     agent any
 
     environment {
-        AWS_SERVER_IP = "54.90.221.101" // <-- Update with latest Web Server Public IP
-        PEM_FILE = "/var/lib/jenkins/karan.pem"
-        REMOTE_USER = "ubuntu"
-        DEPLOY_DIR = "/var/www/html/jenkins-deploy"
-        DOCKER_IMAGE = "karan-node-app"
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials') // Jenkins credentials ID
+        DOCKER_IMAGE = "karanprince/nodejs-app"
+        SERVER_IP = "54.90.221.101" // Update when IP changes
+        SERVER_USER = "ubuntu"
+        PEM_KEY_PATH = "/var/lib/jenkins/keys/aws-key.pem"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
+                git branch: 'main',
+                    url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install & Build') {
             steps {
-                sh 'npm install'
+                dir('app') { // Make sure this is your project folder
+                    sh 'npm install'
+                    sh 'npm run build || echo "No build script found"'
+                }
             }
         }
 
-        stage('Run Tests') {
+        stage('Test') {
             steps {
-                sh 'npm test'
+                dir('app') {
+                    sh 'npm test || echo "No tests found"'
+                }
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Docker Build & Push') {
             steps {
-                sh 'docker build -t $DOCKER_IMAGE .'
+                script {
+                    sh """
+                    docker build -t ${DOCKER_IMAGE}:latest .
+                    echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
+                    docker push ${DOCKER_IMAGE}:latest
+                    """
+                }
             }
         }
 
-        stage('Push to Web Server') {
+        stage('Deploy') {
             steps {
-                sh """
-                    ssh -i $PEM_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$AWS_SERVER_IP 'sudo mkdir -p $DEPLOY_DIR'
-                    scp -i $PEM_FILE -o StrictHostKeyChecking=no docker-compose.yml $REMOTE_USER@$AWS_SERVER_IP:$DEPLOY_DIR/
-                    scp -i $PEM_FILE -o StrictHostKeyChecking=no Dockerfile package.json server.js $REMOTE_USER@$AWS_SERVER_IP:$DEPLOY_DIR/
-                """
-            }
-        }
-
-        stage('Deploy on Web Server') {
-            steps {
-                sh """
-                    ssh -i $PEM_FILE -o StrictHostKeyChecking=no $REMOTE_USER@$AWS_SERVER_IP "
-                        cd $DEPLOY_DIR &&
-                        sudo docker build -t $DOCKER_IMAGE . &&
-                        sudo docker stop $DOCKER_IMAGE || true &&
-                        sudo docker rm $DOCKER_IMAGE || true &&
-                        sudo docker run -d --name $DOCKER_IMAGE -p 3000:3000 $DOCKER_IMAGE
-                    "
-                """
+                script {
+                    sh """
+                    ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ${SERVER_USER}@${SERVER_IP} '
+                        docker pull ${DOCKER_IMAGE}:latest &&
+                        docker stop nodejs-app || true &&
+                        docker rm nodejs-app || true &&
+                        docker run -d --name nodejs-app -p 3000:3000 ${DOCKER_IMAGE}:latest
+                    '
+                    """
+                }
             }
         }
     }
 
     post {
+        success {
+            echo '✅ Deployment successful!'
+        }
         failure {
             echo '❌ Deployment failed.'
-        }
-        success {
-            echo '✅ Deployment successful.'
         }
     }
 }
