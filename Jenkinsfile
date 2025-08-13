@@ -1,16 +1,26 @@
 pipeline {
     agent any
+
     environment {
-        BUILD_NUMBER = "${env.BUILD_NUMBER}"
-        DEPLOY_USER = "ubuntu"
-        DEPLOY_HOST = "44.222.203.180"
-        PEM_FILE = "/var/lib/jenkins/karan.pem"
         DEPLOY_DIR = "/var/www/html/jenkins-deploy"
         BACKUP_FILE = "/tmp/rollback_backup.tar.gz"
-        NODE_ENV = "production"
+        ENVIRONMENT = "STAGING"
+        GIT_BRANCH = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+        GIT_COMMIT = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+        GIT_AUTHOR = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
+        GIT_DATE = sh(script: "git log -1 --pretty=format:%cd --date=iso", returnStdout: true).trim()
+        GIT_MESSAGE = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
+        BUILD_NUMBER = "${env.BUILD_NUMBER}"
     }
 
     stages {
+
+        stage('Setup Environment') {
+            steps {
+                echo "⚙️ Checking Node.js, NPM, and Docker..."
+                sh 'node -v && npm -v && docker --version'
+            }
+        }
 
         stage('Checkout Source') {
             steps {
@@ -19,9 +29,9 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies & Test') {
+        stage('Unit Tests') {
             steps {
-                echo "🧪 Installing dependencies & running tests..."
+                echo "🧪 Running unit tests..."
                 sh '''
                     npm install
                     npm test || true
@@ -29,79 +39,88 @@ pipeline {
             }
         }
 
-        stage('Inject Build Metadata & Env Vars') {
-    steps {
-        echo "📝 Injecting build metadata and environment variables..."
-        script {
-            sh """
-                sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
-                sed -i 's|__GIT_BRANCH__|${GIT_BRANCH}|g' app/index.html
-                sed -i 's|__GIT_COMMIT__|${GIT_COMMIT}|g' app/index.html
-                sed -i 's|__GIT_AUTHOR__|${GIT_AUTHOR}|g' app/index.html
-                sed -i 's|__GIT_DATE__|${GIT_DATE}|g' app/index.html
-                sed -i 's|__GIT_MESSAGE__|${GIT_MESSAGE}|g' app/index.html
-                sed -i 's|__ENVIRONMENT__|${ENVIRONMENT}|g' app/index.html
-            """
-        }
-    }
-}
-
-        stage('Build Docker Image') {
+        stage('Inject Build Metadata') {
             steps {
-                echo "🐳 Building Docker image..."
-                sh "docker build -t jenkins_app:${BUILD_NUMBER} ."
+                echo "📝 Injecting build metadata into index.html..."
+                sh """
+                    sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
+                    sed -i 's|__GIT_BRANCH__|${GIT_BRANCH}|g' app/index.html
+                    sed -i 's|__GIT_COMMIT__|${GIT_COMMIT}|g' app/index.html
+                    sed -i 's|__GIT_AUTHOR__|${GIT_AUTHOR}|g' app/index.html
+                    sed -i 's|__GIT_DATE__|${GIT_DATE}|g' app/index.html
+                    sed -i 's|__GIT_MESSAGE__|${GIT_MESSAGE}|g' app/index.html
+                    sed -i 's|__ENVIRONMENT__|${ENVIRONMENT}|g' app/index.html
+                """
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Package Artifact') {
+            steps {
+                echo "📦 Packaging application..."
+                sh 'tar -czf deploy_artifact.tar.gz app/'
+            }
+        }
+
+        stage('Deploy to EC2 via Docker') {
             steps {
                 echo "🚀 Deploying Docker container to EC2..."
-                sh """
-                    ssh -i ${PEM_FILE} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        sudo mkdir -p ${DEPLOY_DIR}
+                script {
+                    def remote = "ubuntu@44.222.203.180"
+                    def key = "/var/lib/jenkins/karan.pem"
 
-                        # Backup existing container if running
-                        if sudo docker ps -q -f name=jenkins_app >/dev/null 2>&1; then
-                            sudo docker commit jenkins_app backup_jenkins_app:${BUILD_NUMBER}
-                            sudo docker save -o ${BACKUP_FILE} backup_jenkins_app:${BUILD_NUMBER}
-                            sudo docker rm -f jenkins_app
-                        fi
-                    '
+                    // Create deploy directory on EC2
+                    sh "ssh -i ${key} -o StrictHostKeyChecking=no ${remote} 'sudo mkdir -p ${DEPLOY_DIR}'"
 
-                    scp -i ${PEM_FILE} -o StrictHostKeyChecking=no -r ./app ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                    // Backup existing container if running
+                    sh """
+                        ssh -i ${key} -o StrictHostKeyChecking=no ${remote} '
+                            if sudo docker ps -q -f name=jenkins_app >/dev/null 2>&1; then
+                                sudo docker commit jenkins_app backup_jenkins_app:${BUILD_NUMBER}
+                                sudo docker save -o ${BACKUP_FILE} backup_jenkins_app:${BUILD_NUMBER}
+                                sudo docker rm -f jenkins_app
+                            fi
+                        '
+                    """
 
-                    ssh -i ${PEM_FILE} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        cd ${DEPLOY_DIR}
-                        docker build -t jenkins_app:${BUILD_NUMBER} .
-                        docker run -d --name jenkins_app -p 80:80 jenkins_app:${BUILD_NUMBER}
-                    '
-                """
+                    // Copy app and build Docker image
+                    sh "scp -i ${key} -r app ${remote}:${DEPLOY_DIR}/"
+                    sh """
+                        ssh -i ${key} -o StrictHostKeyChecking=no ${remote} '
+                            cd ${DEPLOY_DIR}
+                            sudo docker build -t jenkins_app:${BUILD_NUMBER} .
+                            sudo docker run -d --name jenkins_app -p 80:80 jenkins_app:${BUILD_NUMBER}
+                        '
+                    """
+                }
             }
         }
 
         stage('Post-Deploy Verification') {
             steps {
                 echo "🔍 Verifying deployment..."
-                sh "ssh -i ${PEM_FILE} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'docker ps | grep jenkins_app'"
+                sh "ssh -i /var/lib/jenkins/karan.pem ubuntu@44.222.203.180 'docker ps'"
             }
         }
     }
 
     post {
         failure {
-            echo "⚠️ Deployment failed, initiating rollback..."
+            echo "⚠️ Deployment failed, rolling back..."
             sh """
-                ssh -i ${PEM_FILE} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                ssh -i /var/lib/jenkins/karan.pem -o StrictHostKeyChecking=no ubuntu@44.222.203.180 '
                     if [ -f ${BACKUP_FILE} ]; then
                         sudo docker load -i ${BACKUP_FILE}
                         sudo docker rm -f jenkins_app || true
                         sudo docker run -d --name jenkins_app -p 80:80 backup_jenkins_app:${BUILD_NUMBER}
                         echo "✅ Rollback completed."
                     else
-                        echo "⚠️ No backup found to restore."
+                        echo "⚠️ No backup found."
                     fi
                 '
             """
+        }
+        success {
+            echo "✅ Deployment completed successfully!"
         }
     }
 }
