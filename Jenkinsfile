@@ -2,79 +2,64 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1'
-        ECR_REPO = '576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app'
+        AWS_REGION = "us-east-1"
+        ECR_REPO = "576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app"
         IMAGE_TAG = "build-${BUILD_NUMBER}"
+        DEPLOY_HOST = "54.90.221.101"
+        PEM_KEY = "/var/lib/jenkins/karan.pem"
     }
 
     stages {
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                echo "Checking out repository..."
-                checkout scm
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                echo "Installing Node.js dependencies..."
-                sh 'npm install'
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                echo "Running tests..."
-                sh 'echo "No tests configured yet"'
+                git branch: 'main',
+                    url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo "Building Docker image..."
-                sh "docker build -t ${ECR_REPO}:${IMAGE_TAG} ."
-            }
-        }
-
-        stage('Login to AWS ECR') {
-            steps {
-                echo "Logging in to AWS ECR..."
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+                script {
                     sh """
-                        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-                        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-                        aws configure set default.region ${AWS_REGION}
-                        aws ecr get-login-password --region ${AWS_REGION} \
-                        | docker login --username AWS --password-stdin ${ECR_REPO}
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                        docker build -t $ECR_REPO:$IMAGE_TAG .
                     """
                 }
             }
         }
 
-        stage('Push to AWS ECR') {
+        stage('Push to ECR') {
             steps {
-                echo "Pushing image to AWS ECR..."
-                sh "docker push ${ECR_REPO}:${IMAGE_TAG}"
+                script {
+                    sh """
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                        docker push $ECR_REPO:$IMAGE_TAG
+                    """
+                }
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                echo "Deploying to EC2..."
-                sh """
-                ssh -o StrictHostKeyChecking=no -i /var/lib/jenkins/karan.pem ubuntu@54.90.221.101 \
-                'docker pull ${ECR_REPO}:${IMAGE_TAG} && docker stop app || true && docker rm app || true && docker run -d --name app -p 80:3000 ${ECR_REPO}:${IMAGE_TAG}'
-                """
+                script {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no -i $PEM_KEY ubuntu@$DEPLOY_HOST '
+                            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO &&
+                            docker pull $ECR_REPO:$IMAGE_TAG &&
+                            (docker stop app || true) &&
+                            (docker rm app || true) &&
+                            docker run -d --name app -p 80:3000 $ECR_REPO:$IMAGE_TAG
+                        '
+                    """
+                }
             }
         }
     }
 
     post {
-        success {
-            echo "Pipeline completed successfully ✅"
-        }
-        failure {
-            echo "Pipeline failed ❌"
+        always {
+            echo "Cleaning up local Docker images..."
+            sh 'docker system prune -af || true'
         }
     }
 }
