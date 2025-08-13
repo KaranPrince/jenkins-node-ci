@@ -1,15 +1,19 @@
 {
   "name": "jenkins-node-ci",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Node.js CI/CD project with Jenkins",
+  "main": "server.js",
   "scripts": {
-    "start": "node index.js",
+    "start": "node server.js",
     "test": "mocha test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "mocha": "^11.7.1"
   },
   "dependencies": {
     "express": "^4.18.2"
-  },
-  "devDependencies": {
-    "mocha": "^11.7.1"
   }
 }
