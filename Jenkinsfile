@@ -4,123 +4,99 @@ pipeline {
     environment {
         DEPLOY_DIR = "/var/www/html/jenkins-deploy"
         BACKUP_FILE = "/tmp/rollback_backup.tar.gz"
-        ENVIRONMENT = "STAGING"
-        GIT_BRANCH = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-        GIT_COMMIT = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-        GIT_AUTHOR = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
-        GIT_DATE = sh(script: "git log -1 --pretty=format:%cd --date=iso", returnStdout: true).trim()
-        GIT_MESSAGE = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
+        EC2_USER = "ubuntu"
+        EC2_HOST = "54.90.221.101" // Update to your current EC2 public IP
+        PEM = "/var/lib/jenkins/karan.pem"
         BUILD_NUMBER = "${env.BUILD_NUMBER}"
     }
 
     stages {
-
-        stage('Setup Environment') {
+        stage('Checkout') {
             steps {
-                echo "⚙️ Checking Node.js, NPM, and Docker..."
-                sh 'node -v && npm -v && docker --version'
+                git url: 'https://github.com/KaranPrince/jenkins-node-ci.git', branch: 'master'
             }
         }
 
-        stage('Checkout Source') {
+        stage('Install Dependencies') {
             steps {
-                echo "📥 Pulling latest source code..."
-                checkout scm
+                sh 'npm install'
             }
         }
 
-        stage('Unit Tests') {
+        stage('Run Tests') {
             steps {
-                echo "🧪 Running unit tests..."
-                sh '''
-                    npm install
-                    npm test || true
-                '''
+                sh 'npm test'
             }
         }
 
-        stage('Inject Build Metadata') {
+        stage('Inject Metadata') {
             steps {
-                echo "📝 Injecting build metadata into index.html..."
-                sh """
-                    sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
-                    sed -i 's|__GIT_BRANCH__|${GIT_BRANCH}|g' app/index.html
-                    sed -i 's|__GIT_COMMIT__|${GIT_COMMIT}|g' app/index.html
-                    sed -i 's|__GIT_AUTHOR__|${GIT_AUTHOR}|g' app/index.html
-                    sed -i 's|__GIT_DATE__|${GIT_DATE}|g' app/index.html
-                    sed -i 's|__GIT_MESSAGE__|${GIT_MESSAGE}|g' app/index.html
-                    sed -i 's|__ENVIRONMENT__|${ENVIRONMENT}|g' app/index.html
-                """
-            }
-        }
-
-        stage('Package Artifact') {
-            steps {
-                echo "📦 Packaging application..."
-                sh 'tar -czf deploy_artifact.tar.gz app/'
-            }
-        }
-
-        stage('Deploy to EC2 via Docker') {
-            steps {
-                echo "🚀 Deploying Docker container to EC2..."
                 script {
-                    def remote = "ubuntu@54.90.221.101"
-                    def key = "/var/lib/jenkins/karan.pem"
-
-                    // Create deploy directory on EC2
-                    sh "ssh -i ${key} -o StrictHostKeyChecking=no ${remote} 'sudo mkdir -p ${DEPLOY_DIR}'"
-
-                    // Backup existing container if running
+                    def dateStr = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
                     sh """
-                        ssh -i ${key} -o StrictHostKeyChecking=no ${remote} '
-                            if sudo docker ps -q -f name=jenkins_app >/dev/null 2>&1; then
-                                sudo docker commit jenkins_app backup_jenkins_app:${BUILD_NUMBER}
-                                sudo docker save -o ${BACKUP_FILE} backup_jenkins_app:${BUILD_NUMBER}
-                                sudo docker rm -f jenkins_app
-                            fi
-                        '
-                    """
-
-                    // Copy app and build Docker image
-                    sh "scp -i ${key} -r app ${remote}:${DEPLOY_DIR}/"
-                    sh """
-                        ssh -i ${key} -o StrictHostKeyChecking=no ${remote} '
-                            cd ${DEPLOY_DIR}
-                            sudo docker build -t jenkins_app:${BUILD_NUMBER} .
-                            sudo docker run -d --name jenkins_app -p 80:80 jenkins_app:${BUILD_NUMBER}
-                        '
+                        sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
+                        sed -i 's|__GIT_DATE__|${dateStr}|g' app/index.html
+                        sed -i 's|__GIT_BRANCH__|${env.GIT_BRANCH}|g' app/index.html
+                        sed -i 's|__GIT_COMMIT__|${sh(script: "git rev-parse HEAD", returnStdout: true).trim()}|g' app/index.html
+                        sed -i 's|__GIT_AUTHOR__|${sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()}|g' app/index.html
+                        sed -i 's|__GIT_MESSAGE__|${sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()}|g' app/index.html
                     """
                 }
             }
         }
 
-        stage('Post-Deploy Verification') {
+        stage('Build Docker Image') {
             steps {
-                echo "🔍 Verifying deployment..."
-                sh "ssh -i /var/lib/jenkins/karan.pem ubuntu@54.90.221.101 'docker ps'"
+                sh "docker build -t jenkins_node_app:${BUILD_NUMBER} ."
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                script {
+                    // Backup existing container if exists
+                    sh """
+                    ssh -i ${PEM} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        sudo mkdir -p ${DEPLOY_DIR}
+                        if sudo docker ps -q -f name=jenkins_node_app >/dev/null 2>&1; then
+                            sudo docker commit jenkins_node_app backup_jenkins_node_app:${BUILD_NUMBER}
+                            sudo docker save -o ${BACKUP_FILE} backup_jenkins_node_app:${BUILD_NUMBER}
+                            sudo docker rm -f jenkins_node_app
+                        fi
+                    '
+                    """
+
+                    // Copy project files to EC2
+                    sh "scp -i ${PEM} -r ./app ${EC2_USER}@${EC2_HOST}:${DEPLOY_DIR}/"
+
+                    // Run Docker container
+                    sh """
+                    ssh -i ${PEM} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        cd ${DEPLOY_DIR}
+                        docker build -t jenkins_node_app:${BUILD_NUMBER} .
+                        docker run -d --name jenkins_node_app -p 80:80 jenkins_node_app:${BUILD_NUMBER}
+                    '
+                    """
+                }
             }
         }
     }
 
     post {
         failure {
-            echo "⚠️ Deployment failed, rolling back..."
+            echo '⚠️ Deployment failed, rolling back...'
             sh """
-                ssh -i /var/lib/jenkins/karan.pem -o StrictHostKeyChecking=no ubuntu@44.222.203.180 '
-                    if [ -f ${BACKUP_FILE} ]; then
-                        sudo docker load -i ${BACKUP_FILE}
-                        sudo docker rm -f jenkins_app || true
-                        sudo docker run -d --name jenkins_app -p 80:80 backup_jenkins_app:${BUILD_NUMBER}
-                        echo "✅ Rollback completed."
-                    else
-                        echo "⚠️ No backup found."
-                    fi
-                '
+            ssh -i ${PEM} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                if [ -f ${BACKUP_FILE} ]; then
+                    sudo docker load -i ${BACKUP_FILE}
+                    sudo docker rm -f jenkins_node_app || true
+                    sudo docker run -d --name jenkins_node_app -p 80:80 backup_jenkins_node_app:${BUILD_NUMBER}
+                    echo "✅ Rollback completed."
+                else
+                    echo "⚠️ No backup found to restore."
+                fi
+            '
             """
-        }
-        success {
-            echo "✅ Deployment completed successfully!"
         }
     }
 }
