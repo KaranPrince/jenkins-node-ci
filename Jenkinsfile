@@ -89,45 +89,43 @@ pipeline {
         stage('Deploy to EC2 via Docker') {
             steps {
                 echo "🚀 Deploying Docker container to EC2..."
-                sh """
+                sh '''
                     ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        # Create deploy dir if missing
                         sudo mkdir -p ${DEPLOY_DIR}
-                        # Backup current deployment (if exists)
+                        # Backup existing deployment container
                         if [ -f ${BACKUP_FILE} ]; then sudo rm -f ${BACKUP_FILE}; fi
-                        if [ "$(sudo docker ps -q -f name=jenkins_app)" != "" ]; then
+                        if sudo docker ps -q -f name=jenkins_app >/dev/null 2>&1; then
                             sudo docker commit jenkins_app backup_jenkins_app:${BUILD_NUMBER} &&
                             sudo docker save -o ${BACKUP_FILE} backup_jenkins_app:${BUILD_NUMBER}
                         fi
-                        # Remove old container
                         sudo docker rm -f jenkins_app || true
                     '
 
                     # Build Docker image locally
                     docker build -t ${DOCKER_IMAGE} .
 
-                    # Save and transfer image to EC2
+                    # Save & transfer Docker image to EC2
                     docker save ${DOCKER_IMAGE} | bzip2 | ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'bunzip2 | sudo docker load'
 
                     # Run container on EC2
                     ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
                         sudo docker run -d --name jenkins_app -p 80:80 ${DOCKER_IMAGE}
                     '
-                """
+                '''
             }
         }
 
         stage('Post-Deploy Verification') {
             steps {
                 echo "🔍 Running deployment verification..."
-                sh """
-                    STATUS_CODE=\$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/)
-                    if [ "\$STATUS_CODE" -ne 200 ]; then
+                sh '''
+                    STATUS_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/)
+                    if [ "$STATUS_CODE" -ne 200 ]; then
                         echo "❌ Deployment verification failed!"
                         exit 1
                     fi
                     echo "✅ Deployment verification passed."
-                """
+                '''
             }
         }
 
@@ -136,9 +134,8 @@ pipeline {
     post {
         failure {
             echo "♻️ Rollback deployment..."
-            sh """
+            sh '''
                 ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                    # Restore previous Docker container if backup exists
                     if [ -f ${BACKUP_FILE} ]; then
                         sudo docker load -i ${BACKUP_FILE}
                         sudo docker rm -f jenkins_app || true
@@ -148,9 +145,8 @@ pipeline {
                         echo "⚠️ No backup found to restore."
                     fi
                 '
-            """
+            '''
         }
-
         success {
             echo "✅ Pipeline completed successfully."
         }
