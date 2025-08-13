@@ -4,78 +4,66 @@ pipeline {
     environment {
         AWS_REGION = "us-east-1"
         ECR_REPO = "123456789012.dkr.ecr.us-east-1.amazonaws.com/your-repo"
-        EC2_HOST = "54.90.221.101"
-        EC2_USER = "ubuntu"
         PEM_KEY = "/var/lib/jenkins/karan.pem"
+        REMOTE_HOST = "54.90.221.101"
+        REMOTE_USER = "ubuntu"
+        APP_DIR = "/home/ubuntu/app"
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
             }
         }
 
-        stage('Build Docker Image') {
+        stage('AWS ECR Login Token') {
             steps {
                 script {
-                    dockerImage = docker.build("${ECR_REPO}:latest")
-                }
-            }
-        }
-
-        stage('Push to ECR') {
-            steps {
-                script {
+                    GIT_DATE = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
+                    ECR_TOKEN_FILE = "/tmp/ecr_token_${BUILD_NUMBER}.txt"
                     sh """
-                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-                        docker push $ECR_REPO:latest
+                        aws ecr get-login-password --region $AWS_REGION > ${ECR_TOKEN_FILE}
+                        scp -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i $PEM_KEY ${ECR_TOKEN_FILE} ${REMOTE_USER}@${REMOTE_HOST}:/tmp/ecr_token.txt
                     """
                 }
             }
         }
 
-        stage('Prepare ECR Token') {
+        stage('Docker Build & Push') {
             steps {
-                script {
-                    sh """
-                        ECR_TOKEN_FILE=/tmp/ecr_token_\$(date +%s).txt
-                        aws ecr get-login-password --region $AWS_REGION > \$ECR_TOKEN_FILE
-                        chmod 600 \$ECR_TOKEN_FILE
-
-                        echo "Checking SSH connectivity..."
-                        timeout 10s bash -c "cat < /dev/null > /dev/tcp/$EC2_HOST/22" || {
-                            echo "ERROR: SSH to $EC2_HOST on port 22 is not reachable."
-                            exit 1
-                        }
-
-                        echo "Copying token file to EC2..."
-                        scp -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i $PEM_KEY \$ECR_TOKEN_FILE $EC2_USER@$EC2_HOST:/tmp/ecr_token.txt
-                    """
-                }
+                sh """
+                    cd ${WORKSPACE}  # Ensure we are in repo root
+                    if [ ! -f Dockerfile ]; then
+                        echo "❌ Dockerfile not found!"
+                        exit 1
+                    fi
+                    docker build -t $ECR_REPO:latest .
+                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+                    docker push $ECR_REPO:latest
+                """
             }
         }
 
-        stage('Deploy on EC2') {
+        stage('Deploy to EC2') {
             steps {
-                script {
-                    sh """
-                        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i $PEM_KEY $EC2_USER@$EC2_HOST '
-                            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO &&
-                            docker pull $ECR_REPO:latest &&
-                            docker stop myapp || true &&
-                            docker rm myapp || true &&
-                            docker run -d --name myapp -p 80:3000 $ECR_REPO:latest
-                        '
-                    """
-                }
+                sh """
+                    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i $PEM_KEY ${REMOTE_USER}@${REMOTE_HOST} '
+                        mkdir -p $APP_DIR &&
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO &&
+                        docker pull $ECR_REPO:latest &&
+                        docker stop myapp || true &&
+                        docker rm myapp || true &&
+                        docker run -d --name myapp -p 80:3000 $ECR_REPO:latest
+                    '
+                """
             }
         }
     }
 
     post {
         always {
-            sh 'docker system prune -af || true'
+            sh "docker system prune -af"
         }
     }
 }
