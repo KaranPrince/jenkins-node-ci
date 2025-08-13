@@ -65,7 +65,7 @@ pipeline {
             steps {
                 echo "🚀 Deploying Docker container to EC2..."
                 script {
-                    def remote = "ubuntu@44.222.203.180"
+                    def remote = "ubuntu@54.90.221.101"
                     def key = "/var/lib/jenkins/karan.pem"
 
                     // Create deploy directory on EC2
@@ -98,7 +98,7 @@ pipeline {
         stage('Post-Deploy Verification') {
             steps {
                 echo "🔍 Verifying deployment..."
-                sh "ssh -i /var/lib/jenkins/karan.pem ubuntu@44.222.203.180 'docker ps'"
+                sh "ssh -i /var/lib/jenkins/karan.pem ubuntu@54.90.221.101 'docker ps'"
             }
         }
     }
