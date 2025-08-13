@@ -11,44 +11,50 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo "Checking out repository..."
+                echo "📥 Checking out repository..."
                 checkout scm
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                echo "Installing NPM dependencies..."
+                echo "📦 Installing NPM dependencies..."
                 sh 'cd app && npm install'
             }
         }
 
         stage('Test') {
             steps {
-                echo "Running tests..."
-                // Replace with actual test command if available
-                sh 'cd app && npm test || echo "No tests found"'
+                echo "🧪 Running tests..."
+                sh 'cd app && npm test || echo "⚠️ No tests found"'
             }
         }
 
         stage('Docker Build & Push') {
             steps {
-                echo "Building Docker image..."
-                script {
-                    sh """
-                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI
-                        docker build -t $DOCKER_IMAGE .
-                        docker push $DOCKER_IMAGE
-                    """
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', 
+                                  credentialsId: 'aws-creds']]) {
+                    script {
+                        echo "🐳 Building & pushing Docker image..."
+                        sh """
+                            aws ecr get-login-password --region $AWS_REGION \
+                                | docker login --username AWS --password-stdin $ECR_REPO_URI
+                            
+                            docker build -t $DOCKER_IMAGE .
+                            docker push $DOCKER_IMAGE
+                        """
+                    }
                 }
             }
         }
 
         stage('Deploy') {
             steps {
-                echo "Deploying container to server..."
+                echo "🚀 Deploying container to EC2..."
                 sh """
                     ssh -o StrictHostKeyChecking=no -i /path/to/key.pem ec2-user@YOUR_EC2_PUBLIC_IP "
+                        aws ecr get-login-password --region $AWS_REGION \
+                            | docker login --username AWS --password-stdin $ECR_REPO_URI &&
                         docker pull $DOCKER_IMAGE &&
                         docker stop my-node-app || true &&
                         docker rm my-node-app || true &&
