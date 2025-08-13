@@ -21,10 +21,8 @@ pipeline {
             steps {
                 echo "🔍 Validating HTML syntax..."
                 sh '''
-                    if ! command -v tidy &> /dev/null; then
-                        sudo apt-get update
-                        sudo apt-get install -y tidy
-                    fi
+                    set -e
+                    command -v tidy &>/dev/null || (sudo apt-get update && sudo apt-get install -y tidy)
                     tidy -qe app/index.html
                 '''
             }
@@ -32,7 +30,7 @@ pipeline {
 
         stage('Inject Build Metadata') {
             steps {
-                echo "📝 Inserting build and Git metadata into HTML..."
+                echo "📝 Injecting build & Git metadata..."
                 script {
                     def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
                     def commit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
@@ -53,53 +51,49 @@ pipeline {
 
         stage('Package Artifact') {
             steps {
-                echo "📦 Packaging application for deployment..."
+                echo "📦 Packaging application..."
                 sh 'tar -czf deploy_artifact.tar.gz app/'
-            }
-        }
-
-        stage('Backup Current Deployment') {
-            steps {
-                echo "💾 Backing up current deployment on server..."
-                sh '''
-                    sudo chown jenkins:jenkins ${PEM_KEY_PATH}
-                    sudo chmod 400 ${PEM_KEY_PATH}
-
-                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        if [ -d /var/www/html/jenkins-deploy ]; then
-                            sudo tar -czf /tmp/rollback_backup.tar.gz -C /var/www/html jenkins-deploy
-                        fi
-                    '
-                '''
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                echo "🚀 Deploying to EC2 Web Server..."
+                echo "🚀 Deploying to EC2..."
                 sh '''
-                    scp -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no deploy_artifact.tar.gz ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/ || exit 1
+                    set -e
+                    PEM=${PEM_KEY_PATH}
+                    USER=${DEPLOY_USER}
+                    HOST=${DEPLOY_HOST}
 
-                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        sudo mkdir -p /var/www/html/jenkins-deploy &&
-                        sudo tar -xzf /tmp/deploy_artifact.tar.gz -C /var/www/html/jenkins-deploy --strip-components=1 &&
-                        sudo rm /tmp/deploy_artifact.tar.gz &&
+                    deploy_dir=/var/www/html/jenkins-deploy
+                    backup_file=/tmp/rollback_backup.tar.gz
+                    artifact=/tmp/deploy_artifact.tar.gz
+
+                    echo "💾 Creating backup if deployment exists..."
+                    ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
+                        if [ -d $deploy_dir ]; then
+                            sudo tar -czf $backup_file -C /var/www/html jenkins-deploy
+                        fi
+                    '
+
+                    echo "📤 Copying artifact..."
+                    scp -i $PEM -o StrictHostKeyChecking=no deploy_artifact.tar.gz $USER@$HOST:/tmp/
+
+                    echo "⚙️ Deploying..."
+                    ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
+                        sudo mkdir -p $deploy_dir &&
+                        sudo tar -xzf $artifact -C $deploy_dir --strip-components=1 &&
+                        sudo rm $artifact &&
                         sudo systemctl restart apache2
-                    ' || exit 1
-                '''
-            }
-        }
+                    '
 
-        stage('Post-Deploy Verification') {
-            steps {
-                echo "🔍 Running post-deployment health check..."
-                sh '''
-                    STATUS_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/jenkins-deploy/)
-                    if [ "$STATUS_CODE" -ne 200 ]; then
-                        echo "❌ Deployment verification failed! Rolling back..."
+                    echo "🔍 Verifying deployment..."
+                    STATUS=$(curl -o /dev/null -s -w "%{http_code}" http://$HOST/jenkins-deploy/)
+                    if [ "$STATUS" -ne 200 ]; then
+                        echo "❌ Deployment failed!"
                         exit 1
                     fi
-                    echo "✅ Deployment verification passed."
+                    echo "✅ Deployment successful."
                 '''
             }
         }
@@ -107,22 +101,28 @@ pipeline {
 
     post {
         failure {
-            echo "♻️ Restoring previous version from backup..."
+            echo "♻️ Rolling back to previous version..."
             sh '''
-                ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                    if [ -f /tmp/rollback_backup.tar.gz ]; then
-                        sudo rm -rf /var/www/html/jenkins-deploy &&
-                        sudo tar -xzf /tmp/rollback_backup.tar.gz -C /var/www/html &&
+                PEM=${PEM_KEY_PATH}
+                USER=${DEPLOY_USER}
+                HOST=${DEPLOY_HOST}
+                backup_file=/tmp/rollback_backup.tar.gz
+                deploy_dir=/var/www/html/jenkins-deploy
+
+                ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
+                    if [ -f $backup_file ]; then
+                        sudo rm -rf $deploy_dir &&
+                        sudo tar -xzf $backup_file -C /var/www/html &&
                         sudo systemctl restart apache2
                         echo "✅ Rollback completed."
                     else
-                        echo "⚠️ No rollback backup found. Cannot restore."
+                        echo "⚠️ No rollback backup found!"
                     fi
                 '
             '''
         }
         success {
-            echo "✅ Deployment pipeline completed successfully."
+            echo "🎉 Deployment pipeline finished successfully."
         }
     }
 }
