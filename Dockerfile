@@ -1,19 +1,19 @@
-# Use official Node.js LTS image as base
+# Use Node.js LTS
 FROM node:18-alpine
 
-# Set working directory inside container
+# Set working directory
 WORKDIR /usr/src/app
 
-# Copy package files first for dependency caching
+# Copy package files first for caching
 COPY package*.json ./
 
 # Install dependencies
 RUN npm install --only=production
 
-# Copy app source code
-COPY app/ ./app/
+# Copy application code
+COPY . .
 
-# Expose app port
+# Expose application port
 EXPOSE 3000
 
 # Start the application
