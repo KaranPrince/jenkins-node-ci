@@ -1,61 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Jenkins Deployment Success</title>
-    <style>
-        body {
-            background: linear-gradient(135deg, #1f1c2c, #928dab);
-            color: #fff;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .container {
-            background-color: rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            padding: 30px 50px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-            text-align: center;
-            max-width: 800px;
-        }
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-            color: #FFD700;
-        }
-        .info {
-            font-size: 1.1rem;
-            margin: 10px 0;
-            background-color: rgba(255, 255, 255, 0.15);
-            padding: 10px;
-            border-radius: 8px;
-        }
-        .highlight {
-            color: #00ffcc;
-            font-weight: bold;
-        }
-        .footer {
-            margin-top: 20px;
-            font-size: 0.9rem;
-            color: #ccc;
-        }
-    </style>
+    <title>Node App</title>
 </head>
 <body>
-    <div class="container">
-        <h1>🚀 Jenkins Deployment Successful!</h1>
-        <div class="info">🔢 Build Number: <span class="highlight">__BUILD_NUMBER__</span></div>
-        <div class="info">🕒 Deployed At: <span class="highlight">__GIT_DATE__</span></div>
-        <div class="info">🧠 Git Branch: <span class="highlight">__GIT_BRANCH__</span></div>
-        <div class="info">🔁 Commit ID: <span class="highlight">__GIT_COMMIT__</span></div>
-        <div class="info">👤 Committed By: <span class="highlight">__GIT_AUTHOR__</span></div>
-        <div class="info">💬 Commit Message: <span class="highlight">__GIT_MESSAGE__</span></div>
-        <div class="footer">Made with ❤️ by Karan | Powered by Jenkins & GitHub</div>
-    </div>
+    <h1>Hello from Node.js App 🚀</h1>
+    <p>This app is deployed via Jenkins CI/CD → AWS ECR → EC2</p>
 </body>
 </html>
