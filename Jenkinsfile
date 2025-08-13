@@ -6,10 +6,28 @@ pipeline {
         DEPLOY_HOST  = '44.222.203.180'
         PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
         BUILD_TIME   = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
-        ENVIRONMENT  = 'STAGING' // example: DEV, STAGE, PROD
+        ENVIRONMENT  = 'STAGING'
+        DEPLOY_DIR   = '/var/www/html/jenkins-deploy'
+        BACKUP_FILE  = '/tmp/rollback_backup.tar.gz'
+        DOCKER_IMAGE = "jenkins_app:${BUILD_NUMBER}"
     }
 
     stages {
+
+        stage('Setup Environment') {
+            steps {
+                echo "⚙️ Ensuring Node.js, NPM, and Docker are available..."
+                sh '''
+                    set -e
+                    command -v node &>/dev/null || (curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs)
+                    command -v npm &>/dev/null || (sudo apt-get install -y npm)
+                    node -v
+                    npm -v
+                    command -v docker &>/dev/null || (sudo apt-get install -y docker.io)
+                    docker --version
+                '''
+            }
+        }
 
         stage('Checkout Source') {
             steps {
@@ -23,7 +41,7 @@ pipeline {
                 echo "🔍 Validating HTML..."
                 sh '''
                     set -e
-                    command -v tidy &>/dev/null || (sudo apt-get update && sudo apt-get install -y tidy)
+                    command -v tidy &>/dev/null || sudo apt-get install -y tidy
                     tidy -qe app/index.html
                 '''
             }
@@ -31,22 +49,17 @@ pipeline {
 
         stage('Unit & Integration Tests') {
             steps {
-                echo "🧪 Running tests..."
+                echo "🧪 Running unit & integration tests..."
                 sh '''
                     set -e
-                    # Node.js backend tests
-                    if [ -f package.json ]; then
-                        npm install
-                        npm test || exit 1
-                    fi
-                    # HTML validation already done
+                    [ -f package.json ] && npm install && npm test || echo "⚠️ No Node.js project detected"
                 '''
             }
         }
 
         stage('Inject Build Metadata & Env Vars') {
             steps {
-                echo "📝 Injecting metadata & environment variables..."
+                echo "📝 Injecting build metadata and environment variables..."
                 script {
                     def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
                     def commit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
@@ -60,7 +73,7 @@ pipeline {
                         sed -i "s|__GIT_AUTHOR__|${author}|g" app/index.html
                         sed -i "s|__GIT_DATE__|${BUILD_TIME}|g" app/index.html
                         sed -i "s|__GIT_MESSAGE__|${msg}|g" app/index.html
-                        sed -i "s|__ENV__|${ENVIRONMENT}|g" app/index.html
+                        sed -i "s|__ENVIRONMENT__|${ENVIRONMENT}|g" app/index.html
                     """
                 }
             }
@@ -68,47 +81,53 @@ pipeline {
 
         stage('Package Artifact') {
             steps {
-                echo "📦 Packaging artifact..."
+                echo "📦 Packaging application..."
                 sh 'tar -czf deploy_artifact.tar.gz app/'
             }
         }
 
         stage('Deploy to EC2 via Docker') {
             steps {
-                echo "🚀 Deploying via Docker..."
-                sh '''
-                    set -e
-                    PEM=${PEM_KEY_PATH}
-                    USER=${DEPLOY_USER}
-                    HOST=${DEPLOY_HOST}
-
-                    ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
-                        # Backup if exists
-                        if [ -d /var/www/html/jenkins-deploy ]; then
-                            sudo tar -czf /tmp/rollback_backup.tar.gz -C /var/www/html jenkins-deploy
-                            echo "💾 Backup created."
-                        else
-                            echo "ℹ️ No existing deployment to backup."
+                echo "🚀 Deploying Docker container to EC2..."
+                sh """
+                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        # Create deploy dir if missing
+                        sudo mkdir -p ${DEPLOY_DIR}
+                        # Backup current deployment (if exists)
+                        if [ -f ${BACKUP_FILE} ]; then sudo rm -f ${BACKUP_FILE}; fi
+                        if [ "$(sudo docker ps -q -f name=jenkins_app)" != "" ]; then
+                            sudo docker commit jenkins_app backup_jenkins_app:${BUILD_NUMBER} &&
+                            sudo docker save -o ${BACKUP_FILE} backup_jenkins_app:${BUILD_NUMBER}
                         fi
-
-                        # Ensure Docker installed
-                        command -v docker &>/dev/null || (sudo apt-get update && sudo apt-get install -y docker.io)
-
-                        # Remove old container & directory
+                        # Remove old container
                         sudo docker rm -f jenkins_app || true
-                        sudo rm -rf /var/www/html/jenkins-deploy
-                        sudo mkdir -p /var/www/html/jenkins-deploy
                     '
 
-                    # Build Docker image locally and copy to server
-                    docker build -t jenkins_app_image .
-                    docker save jenkins_app_image | bzip2 | ssh -i $PEM $USER@$HOST 'bunzip2 | docker load'
+                    # Build Docker image locally
+                    docker build -t ${DOCKER_IMAGE} .
 
-                    # Run container
-                    ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
-                        sudo docker run -d --name jenkins_app -p 80:80 -v /var/www/html/jenkins-deploy:/usr/share/nginx/html jenkins_app_image
+                    # Save and transfer image to EC2
+                    docker save ${DOCKER_IMAGE} | bzip2 | ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'bunzip2 | sudo docker load'
+
+                    # Run container on EC2
+                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        sudo docker run -d --name jenkins_app -p 80:80 ${DOCKER_IMAGE}
                     '
-                '''
+                """
+            }
+        }
+
+        stage('Post-Deploy Verification') {
+            steps {
+                echo "🔍 Running deployment verification..."
+                sh """
+                    STATUS_CODE=\$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/)
+                    if [ "\$STATUS_CODE" -ne 200 ]; then
+                        echo "❌ Deployment verification failed!"
+                        exit 1
+                    fi
+                    echo "✅ Deployment verification passed."
+                """
             }
         }
 
@@ -116,27 +135,24 @@ pipeline {
 
     post {
         failure {
-            echo "♻️ Rolling back deployment..."
-            sh '''
-                PEM=${PEM_KEY_PATH}
-                USER=${DEPLOY_USER}
-                HOST=${DEPLOY_HOST}
-                backup_file=/tmp/rollback_backup.tar.gz
-
-                ssh -i $PEM -o StrictHostKeyChecking=no $USER@$HOST '
-                    if [ -f $backup_file ]; then
-                        sudo rm -rf /var/www/html/jenkins-deploy &&
-                        sudo tar -xzf $backup_file -C /var/www/html &&
+            echo "♻️ Rollback deployment..."
+            sh """
+                ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                    # Restore previous Docker container if backup exists
+                    if [ -f ${BACKUP_FILE} ]; then
+                        sudo docker load -i ${BACKUP_FILE}
                         sudo docker rm -f jenkins_app || true
+                        sudo docker run -d --name jenkins_app -p 80:80 backup_jenkins_app:${BUILD_NUMBER}
                         echo "✅ Rollback completed."
                     else
                         echo "⚠️ No backup found to restore."
                     fi
                 '
-            '''
+            """
         }
+
         success {
-            echo "🎉 Deployment succeeded!"
+            echo "✅ Pipeline completed successfully."
         }
     }
 }
