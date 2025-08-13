@@ -1,18 +1,33 @@
-# Use official Node.js image
-FROM node:18
+# ---------- Stage 1: Build dependencies ----------
+FROM node:18 AS build
 
-# Create app directory
+# Set working directory
 WORKDIR /usr/src/app
 
-# Copy package.json and install dependencies
-COPY app/package*.json ./
+# Copy package.json and package-lock.json from root
+COPY package*.json ./
+
+# Install dependencies
 RUN npm install
 
-# Copy the rest of the application files
-COPY app/ .
+# Copy application source
+COPY app/ ./app
 
-# Expose the app port to 3000
+# ---------- Stage 2: Production image ----------
+FROM node:18-slim
+
+# Set working directory
+WORKDIR /usr/src/app
+
+# Copy dependencies from build stage
+COPY --from=build /usr/src/app/node_modules ./node_modules
+
+# Copy application files
+COPY --from=build /usr/src/app/app ./app
+COPY package*.json ./
+
+# Expose application port
 EXPOSE 3000
 
-# Start the app
-CMD ["node", "server.js"]
+# Run the server
+CMD ["node", "app/server.js"]
