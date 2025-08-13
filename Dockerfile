@@ -1,18 +1,20 @@
-# Use Node.js LTS
-FROM node:18
-
-# Set working directory
+# ---------- Build stage ----------
+FROM node:18 AS build
 WORKDIR /app
 
-# Copy package.json and install dependencies
-COPY package.json package-lock.json* ./
-RUN npm install
+# Copy dependency files, install
+COPY package*.json ./
+RUN npm ci || npm install
 
-# Copy the rest of the code
+# Copy the rest
 COPY . .
 
-# Expose app port
-EXPOSE 3000
+# ---------- Runtime stage ----------
+FROM node:18-alpine
+WORKDIR /app
 
-# Run the server.js from /app/app folder
+# Copy built app & node_modules from build stage
+COPY --from=build /app /app
+
+EXPOSE 3000
 CMD ["node", "app/server.js"]
