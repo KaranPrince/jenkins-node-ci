@@ -2,5 +2,6 @@ node_modules
 npm-debug.log
 .git
 .gitignore
-.deploy/
-deploy.env
+Jenkinsfile
+Dockerfile
+README.md
