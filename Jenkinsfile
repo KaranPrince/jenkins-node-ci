@@ -2,25 +2,62 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = "us-east-1"
-        ECR_REPO = "576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app"
-        INSTANCE_ID = "i-0e5abeaed34efdcc2" // Replace with your EC2 Instance ID
-        BUILD_TAG = "build-${env.BUILD_NUMBER}"
+        AWS_REGION    = "us-east-1"
+        ECR_REPO      = "576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app"
+        INSTANCE_ID   = "i-0e5abeaed34efdcc2"
+        BUILD_TAG     = "build-${env.BUILD_NUMBER}"
+        SONAR_PROJECT_KEY = "jenkins-node-ci"
+        SONAR_HOST_URL    = "http://<sonarqube-server>:9000"
+        SONAR_LOGIN       = credentials('sonarqube-token') // Store token in Jenkins
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 git branch: 'master', url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
             }
         }
 
-        stage('Docker Build & Push to ECR') {
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    sh """
+                    sonar-scanner \
+                      -Dsonar.projectKey=$SONAR_PROJECT_KEY \
+                      -Dsonar.sources=. \
+                      -Dsonar.host.url=$SONAR_HOST_URL \
+                      -Dsonar.login=$SONAR_LOGIN
+                    """
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                sh 'npm install && npm test'
+            }
+        }
+
+        stage('Docker Build & Vulnerability Scan') {
+            steps {
+                script {
+                    sh """
+                    # Docker Build
+                    docker build -t $ECR_REPO:$BUILD_TAG .
+
+                    # Vulnerability Scan with Trivy
+                    trivy image --exit-code 1 $ECR_REPO:$BUILD_TAG || true
+                    """
+                }
+            }
+        }
+
+        stage('Push to ECR') {
             steps {
                 script {
                     sh '''
                     aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-                    docker build -t $ECR_REPO:$BUILD_TAG .
                     docker push $ECR_REPO:$BUILD_TAG
                     '''
                 }
@@ -55,9 +92,11 @@ pipeline {
         }
         success {
             echo "✅ Deployment successful!"
+            // Optional: Slack/Teams notification
         }
         failure {
             echo "❌ Deployment failed!"
+            // Optional: Slack/Teams notification
         }
     }
 }
