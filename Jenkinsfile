@@ -62,7 +62,7 @@ pipeline {
             steps {
                 echo "Deploying to EC2..."
                 sh """
-                ssh -o StrictHostKeyChecking=no -i /path/to/key.pem ec2-user@your-ec2-ip \
+                ssh -o StrictHostKeyChecking=no -i /var/lib/jenkins/karan.pem ubuntu@54.90.221.101 \
                 'docker pull ${ECR_REPO}:${IMAGE_TAG} && docker stop app || true && docker rm app || true && docker run -d --name app -p 80:3000 ${ECR_REPO}:${IMAGE_TAG}'
                 """
             }
