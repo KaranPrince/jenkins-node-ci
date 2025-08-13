@@ -3,16 +3,18 @@ pipeline {
 
     environment {
         AWS_REGION = "us-east-1"
-        ECR_REPO = "123456789012.dkr.ecr.us-east-1.amazonaws.com/your-repo"
+        AWS_ACCOUNT_ID = "576290270995"
+        ECR_REPO_NAME = "my-node-app"
+        IMAGE_TAG = "build-${BUILD_NUMBER}"
+        EC2_USER = "ubuntu"
+        EC2_HOST = "54.90.221.101"
         PEM_KEY = "/var/lib/jenkins/karan.pem"
-        REMOTE_HOST = "54.90.221.101"
-        REMOTE_USER = "ubuntu"
-        APP_DIR = "/home/ubuntu/app"
     }
 
     stages {
         stage('Checkout Code') {
             steps {
+                echo "Checking out repository..."
                 git branch: 'main', url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
             }
         }
@@ -20,11 +22,12 @@ pipeline {
         stage('AWS ECR Login Token') {
             steps {
                 script {
-                    GIT_DATE = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
-                    ECR_TOKEN_FILE = "/tmp/ecr_token_${BUILD_NUMBER}.txt"
+                    def GIT_DATE = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
+                    def ECR_TOKEN_FILE = "/tmp/ecr_token_${BUILD_NUMBER}.txt"
+
                     sh """
-                        aws ecr get-login-password --region $AWS_REGION > ${ECR_TOKEN_FILE}
-                        scp -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i $PEM_KEY ${ECR_TOKEN_FILE} ${REMOTE_USER}@${REMOTE_HOST}:/tmp/ecr_token.txt
+                        aws ecr get-login-password --region ${AWS_REGION} > ${ECR_TOKEN_FILE}
+                        scp -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i ${PEM_KEY} ${ECR_TOKEN_FILE} ${EC2_USER}@${EC2_HOST}:/tmp/ecr_token.txt || exit 1
                     """
                 }
             }
@@ -32,38 +35,42 @@ pipeline {
 
         stage('Docker Build & Push') {
             steps {
-                sh """
-                    cd ${WORKSPACE}  # Ensure we are in repo root
-                    if [ ! -f Dockerfile ]; then
-                        echo "❌ Dockerfile not found!"
-                        exit 1
-                    fi
-                    docker build -t $ECR_REPO:latest .
-                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
-                    docker push $ECR_REPO:latest
-                """
+                script {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        DOCKER_BUILDKIT=1 docker build -t ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG} -f Dockerfile .
+                        docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}
+                    """
+                }
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                sh """
-                    ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -i $PEM_KEY ${REMOTE_USER}@${REMOTE_HOST} '
-                        mkdir -p $APP_DIR &&
-                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO &&
-                        docker pull $ECR_REPO:latest &&
-                        docker stop myapp || true &&
-                        docker rm myapp || true &&
-                        docker run -d --name myapp -p 80:3000 $ECR_REPO:latest
-                    '
-                """
+                script {
+                    sh """
+                        ssh -o StrictHostKeyChecking=no -i ${PEM_KEY} ${EC2_USER}@${EC2_HOST} '
+                        docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com < /tmp/ecr_token.txt &&
+                        docker pull ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG} &&
+                        docker stop app || true &&
+                        docker rm app || true &&
+                        docker run -d --name app -p 80:3000 ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${IMAGE_TAG}
+                        '
+                    """
+                }
             }
         }
     }
 
     post {
         always {
-            sh "docker system prune -af"
+            sh 'docker system prune -af || true'
+        }
+        failure {
+            echo "❌ Pipeline failed"
+        }
+        success {
+            echo "✅ Deployment successful"
         }
     }
 }
