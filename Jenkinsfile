@@ -1,6 +1,6 @@
 pipeline {
     agent any
-
+//env calling
     environment {
         DEPLOY_DIR = "/var/www/html/jenkins-deploy"
         BACKUP_FILE = "/tmp/rollback_backup.tar.gz"
