@@ -1,33 +1,18 @@
-# ---------------------------
-# 1. Base image
-# ---------------------------
-FROM node:18-alpine AS base
+# Use Node.js LTS
+FROM node:18
 
 # Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json first for caching
-COPY package*.json ./
+# Copy package.json and install dependencies
+COPY package.json package-lock.json* ./
+RUN npm install
 
-# Install dependencies (production by default, tests will run in Jenkins before this step)
-RUN npm install --production
-
-# Copy application files
+# Copy the rest of the code
 COPY . .
 
-# ---------------------------
-# 2. Production stage
-# ---------------------------
-FROM node:18-alpine
-
-# Set working directory
-WORKDIR /app
-
-# Copy only necessary files from build stage
-COPY --from=base /app /app
-
-# Expose the app port
+# Expose app port
 EXPOSE 3000
 
-# Start the application
-CMD ["node", "server.js"]
+# Run the server.js from /app/app folder
+CMD ["node", "app/server.js"]
