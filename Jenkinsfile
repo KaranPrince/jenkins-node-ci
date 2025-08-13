@@ -2,15 +2,16 @@ pipeline {
     agent any
 
     environment {
-        DEPLOY_USER = 'ubuntu'
-        DEPLOY_HOST = credentials('ec2-host') // stored in Jenkins
-        PEM_KEY_PATH = '/var/lib/jenkins/ssh-key.pem'
+        DEPLOY_USER       = 'ubuntu'
+        DEPLOY_HOST       = credentials('ec2-host') // Jenkins credential for EC2 public IP/DNS
+        PEM_KEY_PATH      = '/var/lib/jenkins/karan.pem' // Private key file path
         REMOTE_DEPLOY_DIR = '/var/www/html/jenkins-deploy'
-        LOCAL_INDEX_HTML = 'app/index.html'
-        ARTIFACT_NAME = 'deploy_artifact.tar.gz'
+        LOCAL_INDEX_HTML  = 'app/index.html'
+        ARTIFACT_NAME     = 'deploy_artifact.tar.gz'
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 echo '🔄 Checking out source code from GitHub...'
@@ -33,7 +34,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo '🧪 Running link and placeholder checks...'
-                // Install linkchecker if missing
+                // Install linkchecker if not present
                 sh 'command -v linkchecker >/dev/null 2>&1 || sudo apt-get update && sudo apt-get install -y linkchecker'
                 // Check internal links (ignore errors for demo)
                 sh "linkchecker --check-extern ${LOCAL_INDEX_HTML} || true"
@@ -47,13 +48,13 @@ pipeline {
                 echo '🚀 Deploying artifact to EC2...'
                 script {
                     // Capture Git info
-                    def gitBranch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                    def gitCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-                    def gitAuthor = sh(script: 'git log -1 --pretty=format:"%an"', returnStdout: true).trim()
-                    def gitDate = sh(script: 'git log -1 --pretty=format:"%cd"', returnStdout: true).trim()
+                    def gitBranch  = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    def gitCommit  = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    def gitAuthor  = sh(script: 'git log -1 --pretty=format:"%an"', returnStdout: true).trim()
+                    def gitDate    = sh(script: 'git log -1 --pretty=format:"%cd"', returnStdout: true).trim()
                     def gitMessage = sh(script: 'git log -1 --pretty=format:"%s"', returnStdout: true).trim()
 
-                    // Inject build info into HTML
+                    // Inject build info into HTML before packaging
                     sh """
                         sed -i "s|__BUILD_NUMBER__|${env.BUILD_NUMBER}|g" ${LOCAL_INDEX_HTML}
                         sed -i "s|__GIT_BRANCH__|${gitBranch}|g" ${LOCAL_INDEX_HTML}
