@@ -29,22 +29,22 @@ pipeline {
             }
         }
 
-        stage('Inject Build Metadata') {
-            steps {
-                echo "📝 Injecting build metadata into index.html..."
-                script {
-                    def now = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
-                    sh """
-                        sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
-                        sed -i 's|__GIT_COMMIT__|$(git rev-parse HEAD)|g' app/index.html
-                        sed -i 's|__GIT_AUTHOR__|$(git log -1 --pretty=format:%an)|g' app/index.html
-                        sed -i 's|__GIT_DATE__|${now}|g' app/index.html
-                        sed -i 's|__GIT_MESSAGE__|$(git log -1 --pretty=format:%s)|g' app/index.html
-                        sed -i 's|__GIT_BRANCH__|$(git rev-parse --abbrev-ref HEAD)|g' app/index.html
-                    """
-                }
-            }
+        stage('Inject Build Metadata & Env Vars') {
+    steps {
+        echo "📝 Injecting build metadata and environment variables..."
+        script {
+            sh """
+                sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
+                sed -i 's|__GIT_BRANCH__|${GIT_BRANCH}|g' app/index.html
+                sed -i 's|__GIT_COMMIT__|${GIT_COMMIT}|g' app/index.html
+                sed -i 's|__GIT_AUTHOR__|${GIT_AUTHOR}|g' app/index.html
+                sed -i 's|__GIT_DATE__|${GIT_DATE}|g' app/index.html
+                sed -i 's|__GIT_MESSAGE__|${GIT_MESSAGE}|g' app/index.html
+                sed -i 's|__ENVIRONMENT__|${ENVIRONMENT}|g' app/index.html
+            """
         }
+    }
+}
 
         stage('Build Docker Image') {
             steps {
