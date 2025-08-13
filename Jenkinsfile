@@ -58,24 +58,35 @@ pipeline {
             }
         }
 
+        stage('Backup Current Deployment') {
+            steps {
+                echo "💾 Backing up current deployment on server..."
+                sh """
+                    sudo chown jenkins:jenkins ${PEM_KEY_PATH}
+                    sudo chmod 400 ${PEM_KEY_PATH}
+                    
+                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        if [ -d /var/www/html/jenkins-deploy ]; then
+                            sudo tar -czf /tmp/rollback_backup.tar.gz -C /var/www/html jenkins-deploy
+                        fi
+                    '
+                """
+            }
+        }
+
         stage('Deploy to EC2') {
             steps {
                 echo "🚀 Deploying to EC2 Web Server..."
-                script {
-                    sh """
-                        sudo chown jenkins:jenkins ${PEM_KEY_PATH}
-                        sudo chmod 400 ${PEM_KEY_PATH}
+                sh """
+                    scp -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no deploy_artifact.tar.gz ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/ || exit 1
 
-                        scp -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no deploy_artifact.tar.gz ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/ || exit 1
-
-                        ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                            sudo mkdir -p /var/www/html/jenkins-deploy &&
-                            sudo tar -xzf /tmp/deploy_artifact.tar.gz -C /var/www/html/jenkins-deploy --strip-components=1 &&
-                            sudo rm /tmp/deploy_artifact.tar.gz &&
-                            sudo systemctl restart apache2
-                        ' || exit 1
-                    """
-                }
+                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                        sudo mkdir -p /var/www/html/jenkins-deploy &&
+                        sudo tar -xzf /tmp/deploy_artifact.tar.gz -C /var/www/html/jenkins-deploy --strip-components=1 &&
+                        sudo rm /tmp/deploy_artifact.tar.gz &&
+                        sudo systemctl restart apache2
+                    ' || exit 1
+                """
             }
         }
 
@@ -85,7 +96,7 @@ pipeline {
                 sh """
                     STATUS_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/jenkins-deploy/)
                     if [ "$STATUS_CODE" -ne 200 ]; then
-                        echo "❌ Deployment verification failed! HTTP Status: $STATUS_CODE"
+                        echo "❌ Deployment verification failed! Rolling back..."
                         exit 1
                     fi
                     echo "✅ Deployment verification passed."
@@ -95,11 +106,23 @@ pipeline {
     }
 
     post {
+        failure {
+            echo "♻️ Restoring previous version from backup..."
+            sh """
+                ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
+                    if [ -f /tmp/rollback_backup.tar.gz ]; then
+                        sudo rm -rf /var/www/html/jenkins-deploy &&
+                        sudo tar -xzf /tmp/rollback_backup.tar.gz -C /var/www/html &&
+                        sudo systemctl restart apache2
+                        echo "✅ Rollback completed."
+                    else
+                        echo "⚠️ No rollback backup found. Cannot restore."
+                    fi
+                '
+            """
+        }
         success {
             echo "✅ Deployment pipeline completed successfully."
-        }
-        failure {
-            echo "❌ Deployment pipeline failed. Check logs."
         }
     }
 }
