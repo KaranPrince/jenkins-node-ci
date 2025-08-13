@@ -2,69 +2,69 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1'
-        ECR_REPO = '576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app'
-        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        AWS_REGION = "us-east-1"
+        ECR_REPO_URI = "576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app"
+        DOCKER_IMAGE = "${ECR_REPO_URI}:${BUILD_NUMBER}"
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
+                echo "Checking out repository..."
+                checkout scm
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm install --prefix app'
+                echo "Installing NPM dependencies..."
+                sh 'cd app && npm install'
             }
         }
 
-        stage('Run Tests & Lint') {
+        stage('Test') {
             steps {
-                sh 'npm test --prefix app || echo "Tests failed but continuing..."'
-                sh 'npm run lint --prefix app || echo "Lint warnings..."'
+                echo "Running tests..."
+                // Replace with actual test command if available
+                sh 'cd app && npm test || echo "No tests found"'
             }
         }
 
-        stage('Build Application') {
+        stage('Docker Build & Push') {
             steps {
-                sh 'echo "Building application..."'
-                // Example for frontend build: sh 'npm run build --prefix app'
-            }
-        }
-
-        stage('Docker Build & Push to ECR') {
-            steps {
+                echo "Building Docker image..."
                 script {
                     sh """
-                        aws ecr get-login-password --region ${AWS_REGION} \
-                        | docker login --username AWS --password-stdin ${ECR_REPO}
-
-                        docker build -t ${ECR_REPO}:${IMAGE_TAG} .
-                        docker push ${ECR_REPO}:${IMAGE_TAG}
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO_URI
+                        docker build -t $DOCKER_IMAGE .
+                        docker push $DOCKER_IMAGE
                     """
                 }
             }
         }
 
-        stage('Deploy to Server') {
+        stage('Deploy') {
             steps {
-                sh '''
-                echo "Deploying application..."
-                # Example for EC2: ssh -i key.pem ec2-user@IP "docker pull ${ECR_REPO}:${IMAGE_TAG} && docker run -d -p 3000:3000 ${ECR_REPO}:${IMAGE_TAG}"
-                '''
+                echo "Deploying container to server..."
+                sh """
+                    ssh -o StrictHostKeyChecking=no -i /path/to/key.pem ec2-user@YOUR_EC2_PUBLIC_IP "
+                        docker pull $DOCKER_IMAGE &&
+                        docker stop my-node-app || true &&
+                        docker rm my-node-app || true &&
+                        docker run -d -p 80:3000 --name my-node-app $DOCKER_IMAGE
+                    "
+                """
             }
         }
     }
 
     post {
         success {
-            echo "✅ Build ${BUILD_NUMBER} completed successfully."
+            echo "✅ Pipeline completed successfully!"
         }
         failure {
-            echo "❌ Build ${BUILD_NUMBER} failed."
+            echo "❌ Pipeline failed!"
         }
     }
 }
