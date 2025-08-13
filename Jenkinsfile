@@ -3,11 +3,11 @@ pipeline {
 
     environment {
         AWS_REGION = "us-east-1" // change if needed
-        ECR_REPO = "your-ecr-repo-name" // change to your repo
+        ECR_REPO = "my-node-app" // change to your repo
         IMAGE_TAG = "latest"
         AWS_CREDENTIALS = credentials('aws-creds')
-        EC2_HOST = "ec2-user@your-ec2-public-ip" // change to your EC2 IP
-        PEM_KEY_PATH = "/var/lib/jenkins/your-key.pem" // update if needed
+        EC2_HOST = "ubuntu@54.90.221.101" // change to your EC2 IP
+        PEM_KEY_PATH = "/var/lib/jenkins/karan.pem" // update if needed
     }
 
     stages {
