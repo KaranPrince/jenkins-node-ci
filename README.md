@@ -147,5 +147,4 @@ Git Metadata shown in a styled HTML page.
   💼 <a href="https://linkedin.com/in/karan-devops" target="_blank">LinkedIn</a> |
   📁 <a href="https://github.com/KaranPrince" target="_blank">GitHub</a>
 </p>
-
-<p align="center">Made with ❤️ by Karan S | Jenkins + GitHub + EC2</p>
+<center><p align="center">Made with ❤️ by Karan S | Jenkins + GitHub + EC2</p></center>
