@@ -140,7 +140,7 @@ Git Metadata shown in a styled HTML page.
 
 ---
 
-## 🙋‍♂️ Author
+<center>## 🙋‍♂️ Author</center>
 
 <p align="center">
   <strong>Karan S</strong><br>
