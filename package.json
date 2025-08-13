@@ -1,12 +1,15 @@
 {
-  "name": "node-app",
+  "name": "jenkins-node-ci",
   "version": "1.0.0",
-  "description": "Simple Node.js app for AWS ECR + Jenkins CI/CD",
+  "description": "Simple Node server that injects build metadata into index.html",
   "main": "app/server.js",
   "scripts": {
-    "start": "node app/server.js"
+    "start": "node app/server.js",
+    "test": "mocha"
   },
-  "dependencies": {
-    "express": "^4.18.2"
+  "author": "Karan",
+  "license": "ISC",
+  "devDependencies": {
+    "mocha": "^11.7.1"
   }
 }
