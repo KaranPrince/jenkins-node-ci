@@ -6,7 +6,6 @@ pipeline {
     AWS_REGION   = 'us-east-1'
     ECR_REGISTRY = '576290270995.dkr.ecr.us-east-1.amazonaws.com'
     ECR_REPO     = "${ECR_REGISTRY}/my-node-app"
-    # NOTE: update EC2_HOST and SSH_KEY if your IP/path changed
     EC2_HOST     = '54.90.221.101'
     SSH_KEY      = '/var/lib/jenkins/karan.pem'
   }
