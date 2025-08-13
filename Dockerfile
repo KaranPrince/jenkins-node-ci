@@ -1,20 +1,17 @@
-# Use Node.js LTS
+# Node runtime
 FROM node:18-alpine
 
-# Set working directory
 WORKDIR /usr/src/app
 
-# Copy package files first for caching
+# Install only what runtime needs (no dev deps)
 COPY package*.json ./
+RUN npm install --omit=dev || npm install --only=production
 
-# Install dependencies
-RUN npm install --only=production
+# Copy app code
+COPY app ./app
 
-# Copy application code
-COPY . .
-
-# Expose application port
+# Container port
 EXPOSE 3000
 
-# Start the application
+# Start the server
 CMD ["node", "app/server.js"]
