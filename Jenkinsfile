@@ -2,26 +2,26 @@ pipeline {
     agent any
 
     environment {
-        DEPLOY_USER  = 'ubuntu'
-        DEPLOY_HOST  = '44.222.203.180'
+        DEPLOY_HOST = credentials('ec2-public-ip')
         PEM_KEY_PATH = '/var/lib/jenkins/karan.pem'
-        BUILD_TIME   = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
+        REMOTE_DEPLOY_DIR = '/var/www/html/jenkins-deploy'
+        BACKUP_DIR = '/tmp/jenkins-backup'
     }
 
     stages {
 
-        stage('Checkout Source') {
+        stage('Checkout Source Code') {
             steps {
-                echo "📥 Pulling latest source code from GitHub..."
+                echo '🔄 Fetching code from GitHub...'
                 checkout scm
             }
         }
 
-        stage('Validate HTML') {
+        stage('HTML Validation') {
             steps {
-                echo "🔍 Validating HTML syntax..."
+                echo '🔧 Validating HTML file...'
                 sh '''
-                    if ! command -v tidy &> /dev/null; then
+                    if ! command -v tidy >/dev/null; then
                         sudo apt-get update
                         sudo apt-get install -y tidy
                     fi
@@ -32,20 +32,21 @@ pipeline {
 
         stage('Inject Build Metadata') {
             steps {
-                echo "📝 Inserting build and Git metadata into HTML..."
+                echo '📝 Injecting build metadata into HTML...'
                 script {
-                    def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-                    def commit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-                    def author = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
-                    def msg    = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
+                    def gitBranch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    def gitCommit = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    def gitAuthor = sh(script: 'git log -1 --pretty=format:%an', returnStdout: true).trim()
+                    def gitDate = sh(script: 'git log -1 --pretty=format:%cd', returnStdout: true).trim()
+                    def gitMessage = sh(script: 'git log -1 --pretty=format:%s', returnStdout: true).trim()
 
                     sh """
-                        sed -i "s|__BUILD_NUMBER__|${env.BUILD_NUMBER}|g" app/index.html
-                        sed -i "s|__GIT_BRANCH__|${branch}|g" app/index.html
-                        sed -i "s|__GIT_COMMIT__|${commit}|g" app/index.html
-                        sed -i "s|__GIT_AUTHOR__|${author}|g" app/index.html
-                        sed -i "s|__GIT_DATE__|${BUILD_TIME}|g" app/index.html
-                        sed -i "s|__GIT_MESSAGE__|${msg}|g" app/index.html
+                        sed -i 's|__BUILD_NUMBER__|${BUILD_NUMBER}|g' app/index.html
+                        sed -i 's|__GIT_BRANCH__|${gitBranch}|g' app/index.html
+                        sed -i 's|__GIT_COMMIT__|${gitCommit}|g' app/index.html
+                        sed -i 's|__GIT_AUTHOR__|${gitAuthor}|g' app/index.html
+                        sed -i 's|__GIT_DATE__|${gitDate}|g' app/index.html
+                        sed -i 's|__GIT_MESSAGE__|${gitMessage}|g' app/index.html
                     """
                 }
             }
@@ -53,76 +54,74 @@ pipeline {
 
         stage('Package Artifact') {
             steps {
-                echo "📦 Packaging application for deployment..."
+                echo '📦 Creating deployment package...'
                 sh 'tar -czf deploy_artifact.tar.gz app/'
-            }
-        }
-
-        stage('Backup Current Deployment') {
-            steps {
-                echo "💾 Backing up current deployment on server..."
-                sh """
-                    sudo chown jenkins:jenkins ${PEM_KEY_PATH}
-                    sudo chmod 400 ${PEM_KEY_PATH}
-                    
-                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        if [ -d /var/www/html/jenkins-deploy ]; then
-                            sudo tar -czf /tmp/rollback_backup.tar.gz -C /var/www/html jenkins-deploy
-                        fi
-                    '
-                """
             }
         }
 
         stage('Deploy to EC2') {
             steps {
-                echo "🚀 Deploying to EC2 Web Server..."
+                echo '🚀 Deploying to EC2...'
                 sh """
-                    scp -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no deploy_artifact.tar.gz ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/ || exit 1
+                    sudo chown jenkins:jenkins ${PEM_KEY_PATH}
+                    sudo chmod 400 ${PEM_KEY_PATH}
 
-                    ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                        sudo mkdir -p /var/www/html/jenkins-deploy &&
-                        sudo tar -xzf /tmp/deploy_artifact.tar.gz -C /var/www/html/jenkins-deploy --strip-components=1 &&
-                        sudo rm /tmp/deploy_artifact.tar.gz &&
-                        sudo systemctl restart apache2
-                    ' || exit 1
+                    ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ubuntu@${DEPLOY_HOST} '
+                        mkdir -p ${BACKUP_DIR} &&
+                        if [ -d ${REMOTE_DEPLOY_DIR} ]; then
+                            sudo rm -rf ${BACKUP_DIR}/* &&
+                            sudo cp -r ${REMOTE_DEPLOY_DIR}/* ${BACKUP_DIR}/
+                        fi
+                    '
+
+                    scp -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} deploy_artifact.tar.gz ubuntu@${DEPLOY_HOST}:/tmp/
+
+                    ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ubuntu@${DEPLOY_HOST} '
+                        sudo mkdir -p ${REMOTE_DEPLOY_DIR} &&
+                        sudo tar -xzf /tmp/deploy_artifact.tar.gz -C ${REMOTE_DEPLOY_DIR} --strip-components=1
+                    '
                 """
             }
         }
 
-        stage('Post-Deploy Verification') {
+        stage('Post-Deploy Health Check') {
             steps {
-                echo "🔍 Running post-deployment health check..."
-                sh """
-                    STATUS_CODE=$(curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/jenkins-deploy/)
-                    if [ "$STATUS_CODE" -ne 200 ]; then
-                        echo "❌ Deployment verification failed! Rolling back..."
-                        exit 1
-                    fi
-                    echo "✅ Deployment verification passed."
-                """
+                echo '🔍 Checking deployment health...'
+                script {
+                    def statusCode = sh(
+                        script: """
+                            curl -o /dev/null -s -w "%{http_code}" http://${DEPLOY_HOST}/jenkins-deploy/
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (statusCode != "200") {
+                        error("❌ Health check failed with status code: ${statusCode}")
+                    } else {
+                        echo "✅ Deployment is healthy."
+                    }
+                }
             }
         }
     }
 
     post {
         failure {
-            echo "♻️ Restoring previous version from backup..."
+            echo '⚠️ Deployment failed. Rolling back to last working version...'
             sh """
-                ssh -i ${PEM_KEY_PATH} -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} '
-                    if [ -f /tmp/rollback_backup.tar.gz ]; then
-                        sudo rm -rf /var/www/html/jenkins-deploy &&
-                        sudo tar -xzf /tmp/rollback_backup.tar.gz -C /var/www/html &&
-                        sudo systemctl restart apache2
-                        echo "✅ Rollback completed."
+                ssh -o StrictHostKeyChecking=no -i ${PEM_KEY_PATH} ubuntu@${DEPLOY_HOST} '
+                    if [ -d ${BACKUP_DIR} ] && [ "$(ls -A ${BACKUP_DIR})" ]; then
+                        sudo rm -rf ${REMOTE_DEPLOY_DIR}/* &&
+                        sudo cp -r ${BACKUP_DIR}/* ${REMOTE_DEPLOY_DIR}/
+                        echo "✅ Rollback complete."
                     else
-                        echo "⚠️ No rollback backup found. Cannot restore."
+                        echo "⚠️ No backup found to rollback."
                     fi
                 '
             """
         }
         success {
-            echo "✅ Deployment pipeline completed successfully."
+            echo "🎉 Build #${BUILD_NUMBER} completed successfully!"
         }
     }
 }
