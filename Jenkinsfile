@@ -88,9 +88,7 @@ pipeline {
 
     post {
     always {
-        node {
-            sh 'docker system prune -af || true'
-        }
+        sh 'docker system prune -af || true'
     }
     success {
         echo "✅ Deployment successful!"
@@ -99,4 +97,5 @@ pipeline {
         echo "❌ Deployment failed!"
     }
 }
+
 }
