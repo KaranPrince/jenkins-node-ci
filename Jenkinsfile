@@ -81,10 +81,12 @@ pipeline {
       }
     }
   }
-
   post {
-    success { echo "✅ Deployment successful!" }
-    failure { echo "❌ Deployment failed!" }
-  }
+    always {
+        node('master') {  // or 'built-in' if using Jenkins 2.414+
+            sh 'docker system prune -af || true'
+            success { echo "✅ Deployment successful!" }
+        }
+    }
 }
 
