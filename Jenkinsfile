@@ -8,7 +8,7 @@ pipeline {
         BUILD_TAG     = "build-${env.BUILD_NUMBER}"
         SONAR_PROJECT_KEY = "jenkins-node-ci"
         SONAR_HOST_URL    = "http://52.91.159.201:9000"
-        SONAR_LOGIN       = credentials('sonarqube-token') // Store token in Jenkins
+        SONAR_LOGIN       = credentials('jenkins-token') // Store token in Jenkins
     }
 
     stages {
