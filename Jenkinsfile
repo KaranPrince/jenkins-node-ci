@@ -87,16 +87,16 @@ pipeline {
     }
 
     post {
-        always {
+    always {
+        node {
             sh 'docker system prune -af || true'
         }
-        success {
-            echo "✅ Deployment successful!"
-            // Optional: Slack/Teams notification
-        }
-        failure {
-            echo "❌ Deployment failed!"
-            // Optional: Slack/Teams notification
-        }
     }
+    success {
+        echo "✅ Deployment successful!"
+    }
+    failure {
+        echo "❌ Deployment failed!"
+    }
+}
 }
