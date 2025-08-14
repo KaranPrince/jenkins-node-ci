@@ -1,4 +1,3 @@
-//js test file added
 const assert = require("assert");
 describe("Sample Test", () => {
   it("should pass", () => {
