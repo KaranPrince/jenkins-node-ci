@@ -7,7 +7,7 @@ pipeline {
     INSTANCE_ID  = "i-0e2c8e55425432246"
     BUILD_TAG    = "build-${env.BUILD_NUMBER}"
     SONAR_KEY    = "jenkins-node-ci"
-    SONAR_HOST   = "http://13.217.194.227:9000"
+    SONAR_HOST   = "http://3.80.177.136:9000"
     SONAR_TOKEN  = credentials('sonarqube-token')
   }
 
