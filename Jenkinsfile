@@ -2,6 +2,7 @@ pipeline {
   agent any
 
   environment {
+    SHELL = "/bin/bash"
     AWS_REGION   = "us-east-1"
     ECR_REPO     = "576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app"
     INSTANCE_ID  = "i-0e2c8e55425432246"
