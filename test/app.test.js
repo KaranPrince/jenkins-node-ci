@@ -1,11 +1,8 @@
-const assert = require('assert');
-const http = require('http');
+const request = require("supertest");
+const app = require("../app/server"); // make sure server.js exports the app
 
-describe('App basic test', function () {
-  it('should return 200 OK from homepage', function (done) {
-    http.get('http://localhost:3000', (res) => {
-      assert.strictEqual(res.statusCode, 200);
-      done();
-    }).on('error', (err) => done(err));
+describe("App basic test", () => {
+  it("should return 200 OK from homepage", async () => {
+    await request(app).get("/").expect(200);
   });
 });
