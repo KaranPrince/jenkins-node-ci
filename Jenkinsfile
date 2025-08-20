@@ -14,8 +14,15 @@ pipeline {
   options {
     timestamps()
   }
-
+ 
   stages {
+    stage('Workspace Reset') {
+  steps {
+    echo "🧹 Resetting workspace..."
+    deleteDir()   // built-in, wipes the current workspace
+  }
+}
+
     stage('Checkout Code') {
       steps {
         echo "🔄 Checking out source code..."
@@ -40,7 +47,6 @@ pipeline {
       steps {
         echo "🧪 Running unit tests..."
         sh '''
-          sudo chown -R $(whoami) node_modules || true
           rm -rf node_modules package-lock.json
           npm install
           npm test || true
