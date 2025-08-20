@@ -88,10 +88,10 @@ pipeline {
     steps {
         echo "🚀 Deploying build ${BUILD_NUMBER} to EC2..."
         script {
-            def branch = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-            def commit = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-            def author = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
-            def date = sh(script: "git log -1 --date=iso-strict --pretty=format:%cd", returnStdout: true).trim()
+            def branch  = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+            def commit  = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+            def author  = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
+            def date    = sh(script: "git log -1 --date=iso-strict --pretty=format:%cd", returnStdout: true).trim()
             def message = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
 
             sh """
@@ -108,8 +108,8 @@ pipeline {
                   "docker rm app || true",
                   "docker run -d --name app -p 80:3000 --restart unless-stopped \
                     -e BUILD_NUMBER=${BUILD_NUMBER} \
-                    -e GIT_BRANCH=${branch} \
-                    -e GIT_COMMIT=${commit} \
+                    -e GIT_BRANCH='${branch}' \
+                    -e GIT_COMMIT='${commit}' \
                     -e GIT_AUTHOR='${author}' \
                     -e GIT_DATE='${date}' \
                     -e GIT_MESSAGE='${message}' \
@@ -120,7 +120,6 @@ pipeline {
         }
     }
 }
-
 
     stage('Smoke Test (HTTP 200)') {
       steps {
