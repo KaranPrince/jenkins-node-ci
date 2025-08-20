@@ -36,11 +36,13 @@ pipeline {
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               sonar-scanner \
-                -D"sonar.projectKey=$SONAR_KEY" \
-                -D"sonar.sources=." \
-                -D"sonar.host.url=$SONAR_HOST" \
-                -D"sonar.token=$SONAR_TOKEN" \
-                -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info"
+                sonar.projectKey=jenkins-node-ci \
+                sonar.sources=app \
+                sonar.tests=test \
+                sonar.exclusions=node_modules/**,coverage/** \
+                sonar.test.inclusions=test/**/*.test.js \
+                sonar.javascript.lcov.reportPaths=coverage/lcov.info \
+
             '''
             // If your agent doesn't have the CLI, use the Jenkins Sonar plugin or `npx sonarqube-scanner`.
           }
