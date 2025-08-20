@@ -103,47 +103,42 @@ pipeline {
     }
 
     stage('Deploy to EC2 via SSM') {
-      steps {
-        echo "🚀 Deploying to EC2 via SSM..."
-        script {
-          // Collect Git metadata
-          def GIT_BRANCH  = sh(returnStdout: true, script: "git rev-parse --abbrev-ref HEAD").trim()
-          def GIT_COMMIT  = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
-          def GIT_AUTHOR  = sh(returnStdout: true, script: "git log -1 --pretty=format:'%an'").trim()
-          def GIT_DATE    = sh(returnStdout: true, script: "git log -1 --pretty=format:'%cd'").trim()
-          def GIT_MESSAGE = sh(returnStdout: true, script: "git log -1 --pretty=format:'%s'").trim()
+  steps {
+    echo "🚀 Deploying to EC2 via SSM..."
+    script {
+      def branch   = sh(returnStdout: true, script: "git rev-parse --abbrev-ref HEAD").trim()
+      def commit   = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+      def author   = sh(returnStdout: true, script: "git log -1 --pretty=format:%an").trim()
+      def date     = sh(returnStdout: true, script: "git log -1 --pretty=format:%cd").trim()
+      def message  = sh(returnStdout: true, script: "git log -1 --pretty=format:%s").trim()
 
-          // Build SSM command script with env vars passed into the container
-          def ssmScript = """
-            set -e
-            aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.ECR_REPO}
-            docker pull ${env.ECR_REPO}:${env.BUILD_TAG}
-            docker stop app || true
-            docker rm app || true
-            docker run -d --name app \\
-              -p 80:3000 --restart unless-stopped \\
-              -e BUILD_NUMBER='${env.BUILD_NUMBER}' \\
-              -e GIT_BRANCH='${GIT_BRANCH}' \\
-              -e GIT_COMMIT='${GIT_COMMIT}' \\
-              -e GIT_AUTHOR='${GIT_AUTHOR}' \\
-              -e GIT_DATE='${GIT_DATE}' \\
-              -e GIT_MESSAGE='${GIT_MESSAGE}' \\
-              -e ENVIRONMENT='prod' \\
-              ${env.ECR_REPO}:${env.BUILD_TAG}
-          """.stripIndent()
-
-          // Send the command to SSM (note: Key=InstanceIds must be exact case)
-          sh """
-            aws ssm send-command \
-              --document-name "AWS-RunShellScript" \
-              --comment "Deploy ${env.BUILD_TAG} to EC2" \
-              --targets "Key=InstanceIds,Values=${env.INSTANCE_ID}" \
-              --parameters commands='[\"${ssmScript.replace("\n","; ")}\"]' \
-              --region "${env.AWS_REGION}" >/dev/null
-          """
-        }
-      }
+      sh """
+        aws ssm send-command \
+          --document-name "AWS-RunShellScript" \
+          --comment "Deploy ${BUILD_TAG} to EC2" \
+          --targets "Key=instanceIds,Values=${INSTANCE_ID}" \
+          --region ${AWS_REGION} \
+          --parameters 'commands=[
+            "set -e",
+            "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}",
+            "docker pull ${ECR_REPO}:${BUILD_TAG}",
+            "docker stop app || true",
+            "docker rm app || true",
+            "docker run -d --name app -p 80:3000 --restart unless-stopped \
+              -e BUILD_NUMBER=${BUILD_NUMBER} \
+              -e GIT_BRANCH=${branch} \
+              -e GIT_COMMIT=${commit} \
+              -e GIT_AUTHOR=\\"${author}\\" \
+              -e GIT_DATE=\\"${date}\\" \
+              -e GIT_MESSAGE=\\"${message}\\" \
+              -e ENVIRONMENT=prod \
+              ${ECR_REPO}:${BUILD_TAG}"
+          ]'
+      """
     }
+  }
+}
+
 
     stage('Smoke Check (Public HTTP 200)') {
       steps {
