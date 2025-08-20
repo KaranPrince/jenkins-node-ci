@@ -37,7 +37,7 @@ pipeline {
               set -euo pipefail
               sonar-scanner \
                 sonar.projectKey=jenkins-node-ci \
-                sonar.sources=app \
+                sonar.sources=. \
                 sonar.tests=test \
                 sonar.exclusions=node_modules/**,coverage/** \
                 sonar.test.inclusions=test/**/*.test.js \
