@@ -1,4 +1,4 @@
-//test file (not used)
+//test file
 const assert = require("assert");
 describe("Sample Test", () => {
   it("should pass", () => {
