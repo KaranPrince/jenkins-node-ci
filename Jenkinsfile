@@ -33,16 +33,13 @@ pipeline {
       parallel {
         stage('SonarQube') {
           steps {
-            sh '''#!/usr/bin/env bash
-              set -euo pipefail
+            sh '''
               sonar-scanner \
-                -D"sonar.projectKey=$SONAR_KEY" \
-                -D"sonar.host.url=$SONAR_HOST" \
-                -D"sonar.token=$SONAR_TOKEN"
+                -Dsonar.token=$SONAR_TOKEN
             '''
-            // If your agent doesn't have the CLI, use the Jenkins Sonar plugin or `npx sonarqube-scanner`.
           }
         }
+
         stage('Unit Tests') {
           steps {
             sh '''#!/usr/bin/env bash
@@ -90,7 +87,8 @@ pipeline {
     }
 
     stage('Deploy to EC2 (via SSM)') {
-  steps {
+    when { branch 'master' }
+    steps {
     sh '''#!/usr/bin/env bash
       set -euo pipefail
       aws ssm send-command \
@@ -110,6 +108,7 @@ pipeline {
 }
     
     stage('Healthcheck & (possible) Rollback') {
+      when { branch 'master' }
       steps {
         script {
           def rc = sh(returnStatus: true, script: '''#!/usr/bin/env bash
@@ -160,6 +159,7 @@ pipeline {
     }
 
     stage('Promote image to stable') {
+      when { branch 'master' }
       when { expression { currentBuild.currentResult == 'SUCCESS' } }
       steps {
         sh '''#!/usr/bin/env bash
@@ -175,18 +175,19 @@ pipeline {
   post {
     always {
       sh 'docker system prune -af || true'
-    }
-    success {
-      echo "✅ Pipeline completed successfully (build #${env.BUILD_NUMBER})"
-    }
-    failure {
-      echo "❌ Pipeline failed."
-    }
-    unstable {
-      echo "⚠️ Pipeline unstable."
-    }
-    aborted {
-      echo "🚫 Pipeline aborted."
-    }
   }
+    success {
+      echo "✅ Build #${env.BUILD_NUMBER} succeeded"
+  }
+    failure {
+      echo "❌ Build #${env.BUILD_NUMBER} failed"
+  }
+    unstable {
+      echo "⚠️ Build #${env.BUILD_NUMBER} is unstable"
+  }
+    aborted {
+      echo "🚫 Build #${env.BUILD_NUMBER} was aborted"
+  }
+}
+
 }
