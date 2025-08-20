@@ -77,35 +77,38 @@ pipeline {
 
     stage('Push to ECR') {
       steps {
-        // If you don't use an instance profile, wrap this stage in withCredentials for AWS keys.
-        sh '''#!/usr/bin/env bash
+        script {
+          awsDockerLogin()
+        }
+        sh '''
           set -euo pipefail
-          script { awsDockerLogin() }
           docker push $ECR_REPO:$BUILD_TAG
         '''
       }
     }
 
     stage('Deploy to EC2 (via SSM)') {
-    when { branch 'master' }
-    steps {
-    sh '''#!/usr/bin/env bash
-      set -euo pipefail
-      aws ssm send-command \
-        --targets "Key=instanceIds,Values=${INSTANCE_ID}" \
-        --document-name "AWS-RunShellScript" \
-        --comment "Deploy Node App" \
-        --region ${AWS_REGION} \
-        --parameters '{"commands":[
-          "script { awsDockerLogin() }",
-          "docker pull ${ECR_REPO}:${BUILD_TAG}",
-          "docker stop app || true",
-          "docker rm app || true",
-          "docker run -d --name app -p 80:3000 --restart unless-stopped ${ECR_REPO}:${BUILD_TAG}"
-        ]}'
-    '''
-  }
-}
+      when { branch 'master' }
+      steps {
+        script {
+          awsDockerLogin()
+        }
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          aws ssm send-command \
+            --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy Node App" \
+            --region ${AWS_REGION} \
+            --parameters '{"commands":[
+              "docker pull ${ECR_REPO}:${BUILD_TAG}",
+              "docker stop app || true",
+              "docker rm app || true",
+              "docker run -d --name app -p 80:3000 --restart unless-stopped ${ECR_REPO}:${BUILD_TAG}"
+            ]}'
+        '''
+      }
+    }
     
     stage('Healthcheck & (possible) Rollback') {
       when { branch 'master' }
@@ -127,6 +130,9 @@ pipeline {
 
           if (rc != 0) {
             echo "⚠️ Rolling back to last good image (stable)..."
+            script {
+              awsDockerLogin()
+            }
             sh '''#!/usr/bin/env bash
               set -euo pipefail
               CMD_ID=$(aws ssm send-command \
@@ -135,7 +141,6 @@ pipeline {
                 --region ${AWS_REGION} \
                 --parameters 'commands=[
                   "set -e",
-                  "script { awsDockerLogin() }",
                   "docker pull ${ECR_REPO}:${STABLE_TAG}",
                   "docker stop app || true",
                   "docker rm app || true",
@@ -159,12 +164,18 @@ pipeline {
     }
 
     stage('Promote image to stable') {
-      when { branch 'master' }
-      when { expression { currentBuild.currentResult == 'SUCCESS' } }
+      when {
+        allOf {
+          branch 'master'
+          expression { currentBuild.currentResult == 'SUCCESS' }
+        }
+      }
       steps {
+        script {
+          awsDockerLogin()
+        }
         sh '''#!/usr/bin/env bash
           set -euo pipefail
-          script { awsDockerLogin() }
           docker tag $ECR_REPO:$BUILD_TAG $ECR_REPO:$STABLE_TAG
           docker push $ECR_REPO:$STABLE_TAG
         '''
@@ -175,19 +186,38 @@ pipeline {
   post {
     always {
       sh 'docker system prune -af || true'
-  }
+    }
     success {
       echo "✅ Build #${env.BUILD_NUMBER} succeeded"
-  }
+      slackSend (
+        channel: '#ci-cd',
+        color: 'good',
+        message: "✅ SUCCESS: Build #${env.BUILD_NUMBER} (${env.JOB_NAME})"
+      )
+    }
     failure {
       echo "❌ Build #${env.BUILD_NUMBER} failed"
-  }
+      slackSend (
+        channel: '#ci-cd',
+        color: 'danger',
+        message: "❌ FAILED: Build #${env.BUILD_NUMBER} (${env.JOB_NAME})"
+      )
+    }
     unstable {
       echo "⚠️ Build #${env.BUILD_NUMBER} is unstable"
-  }
+      slackSend (
+        channel: '#ci-cd',
+        color: 'warning',
+        message: "⚠️ UNSTABLE: Build #${env.BUILD_NUMBER} (${env.JOB_NAME})"
+      )
+    }
     aborted {
       echo "🚫 Build #${env.BUILD_NUMBER} was aborted"
+      slackSend (
+        channel: '#ci-cd',
+        color: '#AAAAAA',
+        message: "🚫 ABORTED: Build #${env.BUILD_NUMBER} (${env.JOB_NAME})"
+      )
+    }
   }
-}
-
 }
