@@ -70,30 +70,30 @@ pipeline {
 
     stage('Docker Build & Image Scan') {
       steps {
-        sh """#!/usr/bin/env bash
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           docker build -t $ECR_REPO:$BUILD_TAG .
           # Report-only image scan (FS scan above already gates)
           trivy image --severity HIGH,CRITICAL --no-progress $ECR_REPO:$BUILD_TAG || true
-        """
+        '''
       }
     }
 
     stage('Push to ECR') {
       steps {
         // If you don't use an instance profile, wrap this stage in withCredentials for AWS keys.
-        sh """#!/usr/bin/env bash
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           aws ecr get-login-password --region $AWS_REGION \
             | docker login --username AWS --password-stdin $ECR_REPO
           docker push $ECR_REPO:$BUILD_TAG
-        """
+        '''
       }
     }
 
     stage('Deploy to EC2 (via SSM)') {
       steps {
-        sh """#!/usr/bin/env bash
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           CMD_ID=$(aws ssm send-command \
             --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
@@ -118,7 +118,7 @@ pipeline {
             [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" ]] && exit 1
             sleep 5
           done
-        """
+        '''
       }
     }
 
@@ -141,7 +141,7 @@ pipeline {
 
           if (rc != 0) {
             echo "⚠️ Rolling back to last good image (stable)..."
-            sh """#!/usr/bin/env bash
+            sh '''#!/usr/bin/env bash
               set -euo pipefail
               CMD_ID=$(aws ssm send-command \
                 --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
@@ -165,7 +165,7 @@ pipeline {
                 [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" ]] && exit 1
                 sleep 5
               done
-            """
+            '''
             error("Rolled back because healthcheck failed.")
           }
         }
@@ -175,13 +175,13 @@ pipeline {
     stage('Promote image to stable') {
       when { expression { currentBuild.currentResult == 'SUCCESS' } }
       steps {
-        sh """#!/usr/bin/env bash
+        sh '''#!/usr/bin/env bash
           set -euo pipefail
           aws ecr get-login-password --region $AWS_REGION \
             | docker login --username AWS --password-stdin $ECR_REPO
           docker tag $ECR_REPO:$BUILD_TAG $ECR_REPO:$STABLE_TAG
           docker push $ECR_REPO:$STABLE_TAG
-        """
+        '''
       }
     }
   }
