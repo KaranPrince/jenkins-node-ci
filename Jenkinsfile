@@ -39,8 +39,6 @@ pipeline {
                 -D"sonar.projectKey=$SONAR_KEY" \
                 -D"sonar.host.url=$SONAR_HOST" \
                 -D"sonar.token=$SONAR_TOKEN"
-                -D"sonar.javascript.lcov.reportPaths=coverage/lcov.info" \
-
             '''
             // If your agent doesn't have the CLI, use the Jenkins Sonar plugin or `npx sonarqube-scanner`.
           }
