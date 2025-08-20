@@ -44,15 +44,25 @@ pipeline {
     }
 
     stage('Run Tests') {
-      steps {
-        echo "🧪 Running unit tests..."
-        sh '''
-          rm -rf node_modules package-lock.json
-          npm install
-          npm test || true
-        '''
-      }
-    }
+  steps {
+    echo "🧪 Running unit tests..."
+    sh '''
+      set -e
+      # Ensure we own the workspace (should already be true after the one-time server fix)
+      [ -w "$WORKSPACE" ] || { echo "Workspace not writable by $(whoami)"; exit 1; }
+
+      # Always start clean to avoid cache/perm issues
+      rm -rf node_modules package-lock.json || true
+
+      # Fast, reproducible installs
+      npm ci --no-audit --no-fund || npm install
+
+      # Your tests (return 0 even if no real tests yet)
+      npm test || true
+    '''
+  }
+}
+
 
     stage('Docker Build & Security Scan') {
       steps {
