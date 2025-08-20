@@ -117,7 +117,7 @@ pipeline {
 
             sh """
               aws ssm send-command \
-                --targets "Key=InstanceIds,Values=18.215.177.39" \
+                --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
                 --document-name "AWS-RunShellScript" \
                 --comment "Deploy build-${BUILD_NUMBER}" \
                 --region ${AWS_REGION} \
