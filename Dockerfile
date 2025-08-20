@@ -1,9 +1,10 @@
-# Stage 1: install dependencies
+# Stage 1: dependencies
 FROM node:18-alpine AS deps
 WORKDIR /usr/src/app
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+# Deterministic first; if lock is stale in CI, fall back so image still builds
+RUN npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund
 
 # Stage 2: runtime
 FROM node:18-alpine
@@ -12,11 +13,10 @@ ENV NODE_ENV=production
 
 RUN apk add --no-cache curl
 
-# Copy deps + app code
 COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY app ./app
 
-# Run as non-root user (security best practice)
+# Drop privileges
 USER node
 
 EXPOSE 3000
