@@ -1,27 +1,35 @@
-# Stage 1: dependencies
-FROM node:18-alpine AS deps
-WORKDIR /usr/src/app
-ENV NODE_ENV=production
+# ---------- Build stage ----------
+FROM node:18-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies only when needed
 COPY package*.json ./
-# Deterministic first; if lock is stale in CI, fall back so image still builds
-RUN npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund
 
-# Stage 2: runtime
+# Install all dependencies (including dev)
+RUN npm install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Run build step if needed (e.g., transpile TypeScript or bundle)
+# RUN npm run build
+
+# ---------- Production stage ----------
 FROM node:18-alpine
-WORKDIR /usr/src/app
-ENV NODE_ENV=production
 
-RUN apk add --no-cache curl
+WORKDIR /app
 
-COPY --from=deps /usr/src/app/node_modules ./node_modules
-COPY app ./app
+# Copy only production dependencies
+COPY package*.json ./
+RUN npm install --production --frozen-lockfile
 
-# Drop privileges
-USER node
+# Copy built app from builder stage
+COPY --from=builder /app . 
 
+# Expose app port
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -fsS http://localhost:3000/ || exit 1
-
-CMD ["node", "app/server.js"]
+# Run the app
+CMD ["node", "app.js"]
