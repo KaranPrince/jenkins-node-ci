@@ -40,6 +40,7 @@ pipeline {
       steps {
         echo "🧪 Running unit tests..."
         sh '''
+          sudo chown -R $(whoami) node_modules || true
           rm -rf node_modules package-lock.json
           npm install
           npm test || true
