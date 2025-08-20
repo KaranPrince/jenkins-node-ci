@@ -35,7 +35,10 @@ pipeline {
           steps {
             sh '''
               sonar-scanner \
-                -Dsonar.token=$SONAR_TOKEN
+                -Dsonar.projectKey=$SONAR_KEY \
+                -Dsonar.host.url=$SONAR_HOST \
+                -Dsonar.login=$SONAR_TOKEN
+
             '''
           }
         }
