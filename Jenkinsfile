@@ -85,47 +85,34 @@ pipeline {
     }
 
    stage('Deploy to EC2 (via SSM)') {
-    steps {
-        echo "🚀 Deploying build ${BUILD_NUMBER} to EC2..."
-        script {
-            def branch  = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
-            def commit  = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
-            def author  = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
-            def date    = sh(script: "git log -1 --date=iso-strict --pretty=format:%cd", returnStdout: true).trim()
-            def message = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
+  steps {
+    echo "🚀 Deploying build ${BUILD_NUMBER} to EC2..."
+    script {
+      def branch  = sh(script: "git rev-parse --abbrev-ref HEAD", returnStdout: true).trim()
+      def commit  = sh(script: "git rev-parse HEAD", returnStdout: true).trim()
+      def author  = sh(script: "git log -1 --pretty=format:%an", returnStdout: true).trim()
+      def date    = sh(script: "git log -1 --date=iso-strict --pretty=format:%cd", returnStdout: true).trim()
+      def message = sh(script: "git log -1 --pretty=format:%s", returnStdout: true).trim()
 
-            writeFile file: 'deploy-commands.json', text: """
-{
-  "commands": [
-    "set -e",
-    "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}",
-    "docker pull ${ECR_REPO}:${BUILD_TAG}",
-    "docker stop app || true",
-    "docker rm app || true",
-    "docker run -d --name app -p 80:3000 --restart unless-stopped \\
-      -e BUILD_NUMBER=${BUILD_NUMBER} \\
-      -e GIT_BRANCH=${branch} \\
-      -e GIT_COMMIT=${commit} \\
-      -e GIT_AUTHOR=${author} \\
-      -e GIT_DATE=${date} \\
-      -e GIT_MESSAGE=${message} \\
-      -e ENVIRONMENT=prod \\
-      ${ECR_REPO}:${BUILD_TAG}"
-  ]
-}
-"""
-
-            sh """
-              aws ssm send-command \
-                --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
-                --document-name "AWS-RunShellScript" \
-                --comment "Deploy build-${BUILD_NUMBER}" \
-                --region ${AWS_REGION} \
-                --cli-input-json file://deploy-commands.json
-            """
-        }
+      sh """
+        aws ssm send-command \
+          --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
+          --document-name "AWS-RunShellScript" \
+          --comment "Deploy build-${BUILD_NUMBER}" \
+          --region ${AWS_REGION} \
+          --parameters 'commands=[
+            "set -e",
+            "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}",
+            "docker pull ${ECR_REPO}:${BUILD_TAG}",
+            "docker stop app || true",
+            "docker rm app || true",
+            "docker run -d --name app -p 80:3000 --restart unless-stopped -e BUILD_NUMBER=${BUILD_NUMBER} -e GIT_BRANCH=${branch} -e GIT_COMMIT=${commit} -e GIT_AUTHOR=${author} -e GIT_DATE=${date} -e GIT_MESSAGE=${message} -e ENVIRONMENT=prod ${ECR_REPO}:${BUILD_TAG}"
+          ]'
+      """
     }
+  }
 }
+
 
 
 
