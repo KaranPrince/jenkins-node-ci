@@ -208,7 +208,7 @@ pipeline {
                   exit 0
                 fi
                 echo "⏳ Waiting for app to become healthy ($i/12)..."
-                sleep 5
+                sleep 10
               done
               echo "❌ Healthcheck failed"
               exit 1
