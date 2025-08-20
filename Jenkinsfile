@@ -92,36 +92,25 @@ pipeline {
     }
 
     stage('Deploy to EC2 (via SSM)') {
-      steps {
-        sh '''#!/usr/bin/env bash
-          set -euo pipefail
-          CMD_ID=$(aws ssm send-command \
-            --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
-            --document-name "AWS-RunShellScript" \
-            --region ${AWS_REGION} \
-            --parameters 'commands=[
-              "set -e",
-              "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}",
-              "docker pull ${ECR_REPO}:${BUILD_TAG}",
-              "docker stop app || true",
-              "docker rm app || true",
-              "docker run -d --name app -p 80:3000 --restart unless-stopped ${ECR_REPO}:${BUILD_TAG}"
-            ]' \
-            --query 'Command.CommandId' --output text)
-
-          # Wait for command to complete
-          for i in {1..60}; do
-            STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details \
-              --region ${AWS_REGION} --query 'CommandInvocations[0].Status' --output text)
-            echo "SSM status: $STATUS"
-            [[ "$STATUS" == "Success" ]] && break
-            [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" ]] && exit 1
-            sleep 5
-          done
-        '''
-      }
-    }
-
+  steps {
+    sh '''#!/usr/bin/env bash
+      set -euo pipefail
+      aws ssm send-command \
+        --targets "Key=instanceIds,Values=${INSTANCE_ID}" \
+        --document-name "AWS-RunShellScript" \
+        --comment "Deploy Node App" \
+        --region ${AWS_REGION} \
+        --parameters '{"commands":[
+          "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}",
+          "docker pull ${ECR_REPO}:${BUILD_TAG}",
+          "docker stop app || true",
+          "docker rm app || true",
+          "docker run -d --name app -p 80:3000 --restart unless-stopped ${ECR_REPO}:${BUILD_TAG}"
+        ]}'
+    '''
+  }
+}
+    
     stage('Healthcheck & (possible) Rollback') {
       steps {
         script {
