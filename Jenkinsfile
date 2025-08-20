@@ -83,8 +83,7 @@ pipeline {
         // If you don't use an instance profile, wrap this stage in withCredentials for AWS keys.
         sh '''#!/usr/bin/env bash
           set -euo pipefail
-          aws ecr get-login-password --region $AWS_REGION \
-            | docker login --username AWS --password-stdin $ECR_REPO
+          script { awsDockerLogin() }
           docker push $ECR_REPO:$BUILD_TAG
         '''
       }
@@ -100,7 +99,7 @@ pipeline {
         --comment "Deploy Node App" \
         --region ${AWS_REGION} \
         --parameters '{"commands":[
-          "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}",
+          "script { awsDockerLogin() }",
           "docker pull ${ECR_REPO}:${BUILD_TAG}",
           "docker stop app || true",
           "docker rm app || true",
@@ -137,7 +136,7 @@ pipeline {
                 --region ${AWS_REGION} \
                 --parameters 'commands=[
                   "set -e",
-                  "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}",
+                  "script { awsDockerLogin() }",
                   "docker pull ${ECR_REPO}:${STABLE_TAG}",
                   "docker stop app || true",
                   "docker rm app || true",
@@ -165,8 +164,7 @@ pipeline {
       steps {
         sh '''#!/usr/bin/env bash
           set -euo pipefail
-          aws ecr get-login-password --region $AWS_REGION \
-            | docker login --username AWS --password-stdin $ECR_REPO
+          script { awsDockerLogin() }
           docker tag $ECR_REPO:$BUILD_TAG $ECR_REPO:$STABLE_TAG
           docker push $ECR_REPO:$STABLE_TAG
         '''
