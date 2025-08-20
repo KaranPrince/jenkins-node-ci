@@ -1,35 +1,29 @@
 # ---------- Build stage ----------
 FROM node:18-alpine AS builder
-
-# Set working directory
 WORKDIR /app
 
-# Install dependencies only when needed
+# Install exact deps from lockfile (deterministic)
 COPY package*.json ./
+RUN npm ci --no-audit --no-fund
 
-# Install all dependencies (including dev)
-RUN npm install --frozen-lockfile
-
-# Copy source code
+# Copy source and (optionally) build
 COPY . .
-
-# Run build step if needed (e.g., transpile TypeScript or bundle)
 # RUN npm run build
 
-# ---------- Production stage ----------
-FROM node:18-alpine
+# Keep only production dependencies for the runtime image
+RUN npm prune --omit=dev
 
+# ---------- Runtime stage ----------
+FROM node:18-alpine
+ENV NODE_ENV=production
 WORKDIR /app
 
-# Copy only production dependencies
-COPY package*.json ./
-RUN npm install --production --frozen-lockfile
+# Non-root user
+RUN addgroup -S app && adduser -S app -G app
 
-# Copy built app from builder stage
-COPY --from=builder /app . 
+# Copy app with pruned prod deps
+COPY --from=builder /app/ /app/
 
-# Expose app port
+USER app
 EXPOSE 3000
-
-# Run the app
 CMD ["node", "app.js"]
