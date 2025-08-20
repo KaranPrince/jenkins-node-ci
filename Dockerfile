@@ -1,19 +1,24 @@
-#base-img
-FROM node:18-alpine
-
+# Use a multi-stage build to keep the final image tiny and clean
+FROM node:18-alpine AS deps
 WORKDIR /usr/src/app
-
-# copy package files (root)
+ENV NODE_ENV=production
 COPY package*.json ./
+# Reproducible installs; omit dev deps; no audit/fund noise
+RUN npm ci --omit=dev --no-audit --no-fund
 
-# install production deps
-RUN npm ci --omit=dev || npm install --only=production
+FROM node:18-alpine AS runtime
+WORKDIR /usr/src/app
+ENV NODE_ENV=production
 
-# optional: add curl for healthcheck inside container
+# Add curl in a single layer (used by HEALTHCHECK)
 RUN apk add --no-cache curl
 
-# copy the app folder (server.js and index.html live under app/)
+# Copy only what we need
+COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY app ./app
+
+# Run as the non-root 'node' user that ships with the image
+USER node
 
 EXPOSE 3000
 
