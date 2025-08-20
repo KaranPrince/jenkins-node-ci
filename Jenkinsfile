@@ -64,41 +64,42 @@ pipeline {
     }
 
     stage('Deploy to EC2 (via SSM)') {
-      steps {
-        echo "🚀 Deploying build $BUILD_TAG to EC2..."
-        script {
-          def GIT_BRANCH  = sh(returnStdout: true, script: "git rev-parse --abbrev-ref HEAD").trim()
-          def GIT_COMMIT  = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
-          def GIT_AUTHOR  = sh(returnStdout: true, script: "git log -1 --pretty=format:'%an'").trim()
-          def GIT_DATE    = sh(returnStdout: true, script: "git log -1 --pretty=format:'%cd'").trim()
-          def GIT_MESSAGE = sh(returnStdout: true, script: "git log -1 --pretty=format:'%s'").trim()
+  steps {
+    echo "🚀 Deploying build $BUILD_TAG to EC2..."
+    script {
+      def GIT_BRANCH  = sh(returnStdout: true, script: "git rev-parse --abbrev-ref HEAD").trim()
+      def GIT_COMMIT  = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
+      def GIT_AUTHOR  = sh(returnStdout: true, script: "git log -1 --pretty=format:%an").trim()
+      def GIT_DATE    = sh(returnStdout: true, script: "git log -1 --date=iso-strict --pretty=format:%cd").trim()
+      def GIT_MESSAGE = sh(returnStdout: true, script: "git log -1 --pretty=format:%s").trim()
 
-          sh """
-            aws ssm send-command \
-              --targets "Key=instanceIds,Values=$INSTANCE_ID" \
-              --document-name "AWS-RunShellScript" \
-              --comment "Deploy $BUILD_TAG" \
-              --region $AWS_REGION \
-              --parameters 'commands=[
-                "set -e",
-                "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO",
-                "docker pull $ECR_REPO:$BUILD_TAG",
-                "docker stop app || true",
-                "docker rm app || true",
-                "docker run -d --name app -p 80:3000 --restart unless-stopped \\
-                  -e BUILD_NUMBER=$BUILD_NUMBER \\
-                  -e GIT_BRANCH=$GIT_BRANCH \\
-                  -e GIT_COMMIT=$GIT_COMMIT \\
-                  -e GIT_AUTHOR='$GIT_AUTHOR' \\
-                  -e GIT_DATE='$GIT_DATE' \\
-                  -e GIT_MESSAGE='$GIT_MESSAGE' \\
-                  -e ENVIRONMENT=prod \\
-                  $ECR_REPO:$BUILD_TAG"
-              ]'
-          """
-        }
-      }
+      sh """
+        aws ssm send-command \
+          --targets "Key=instanceIds,Values=$INSTANCE_ID" \
+          --document-name "AWS-RunShellScript" \
+          --comment "Deploy $BUILD_TAG" \
+          --region $AWS_REGION \
+          --parameters 'commands=[
+            "set -e",
+            "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO",
+            "docker pull $ECR_REPO:$BUILD_TAG",
+            "docker stop app || true",
+            "docker rm app || true",
+            "docker run -d --name app -p 80:3000 --restart unless-stopped \\
+              -e BUILD_NUMBER=$BUILD_NUMBER \\
+              -e GIT_BRANCH=$GIT_BRANCH \\
+              -e GIT_COMMIT=$GIT_COMMIT \\
+              -e GIT_AUTHOR='$GIT_AUTHOR' \\
+              -e GIT_DATE='$GIT_DATE' \\
+              -e GIT_MESSAGE='$GIT_MESSAGE' \\
+              -e ENVIRONMENT=prod \\
+              $ECR_REPO:$BUILD_TAG"
+          ]'
+      """
     }
+  }
+}
+
 
     stage('Smoke Test (HTTP 200)') {
       steps {
