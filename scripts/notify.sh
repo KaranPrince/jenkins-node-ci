@@ -1,9 +1,10 @@
 #!/bin/bash
-# notify.sh - Sends a Slack notification based on build status
+# notify.sh - Sends a Slack notification using curl
 
 BUILD_STATUS=$1
 JOB_NAME=$2
 BUILD_NUMBER=$3
+SLACK_URL=$4
 
 case "$BUILD_STATUS" in
   "success")
@@ -28,8 +29,4 @@ case "$BUILD_STATUS" in
     ;;
 esac
 
-slackSend(
-  channel: '#ci-cd',
-  color: "${COLOR}",
-  message: "${MESSAGE}"
-)
+curl -X POST -H 'Content-type: application/json' --data "{'attachments':[{'color':'$COLOR','text':'$MESSAGE'}]}" "$SLACK_URL"
