@@ -49,7 +49,7 @@ pipeline {
           '''
         }
         // This step is crucial and must be outside the withSonarQubeEnv wrapper
-        timeout(time: 5, unit: 'MINUTES') {
+        timeout(time: 12, unit: 'MINUTES') {
             waitForQualityGate abortPipeline: true
         }
       }
