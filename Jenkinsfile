@@ -28,34 +28,32 @@ pipeline {
     }
 
     stage('Quality & Tests') {
-  steps {
-    // Stage 1: Run Unit Tests
-    sh '''#!/bin/bash
-      set -euo pipefail
-      if ! npm ci --no-audit --no-fund; then
-        echo "npm ci failed (lock mismatch). Falling back to npm install..."
-        npm install --no-audit --no-fund
-      fi
-      npm test -- --coverage
-    '''
-    // Stage 2: Run SonarQube analysis after tests are complete
-    withCredentials([
-      string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')
-    ]) {
-      sh '''#!/bin/bash
-        set -euo pipefail
-        sonar-scanner \
-          -Dsonar.projectKey=$SONAR_KEY \
-          -Dsonar.host.url=$SONAR_HOST \
-          -Dsonar.token=$SONAR_TOKEN \
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-      '''
-      timeout(time: 5, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
+      steps {
+        // Stage 1: Run Unit Tests and generate coverage report
+        sh '''#!/bin/bash
+          set -euo pipefail
+          if ! npm ci --no-audit --no-fund; then
+            echo "npm ci failed (lock mismatch). Falling back to npm install..."
+            npm install --no-audit --no-fund
+          fi
+          npm test -- --coverage
+        '''
+        // Stage 2: Run SonarQube analysis after tests are complete
+        withSonarQubeEnv(credentialsId: 'sonarqube-token') {
+          sh '''#!/bin/bash
+            set -euo pipefail
+            sonar-scanner \
+              -Dsonar.projectKey=$SONAR_KEY \
+              -Dsonar.host.url=$SONAR_HOST \
+              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          '''
+        }
+        // This step is crucial and must be outside the withSonarQubeEnv wrapper
+        timeout(time: 5, unit: 'MINUTES') {
+            waitForQualityGate abortPipeline: true
+        }
       }
     }
-  }
-}
 
     stage('Security Scan (Trivy FS)') {
       steps {
@@ -191,19 +189,22 @@ pipeline {
 
   post {
     always {
-      sh 'docker system prune -af || true'
+      sh '''#!/bin/bash
+        chmod +x ./scripts/notify.sh
+        docker system prune -af || true
+      '''
     }
     success {
-      sh "./scripts/notify.sh 'success' ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+      sh "./scripts/notify.sh success ${env.JOB_NAME} ${env.BUILD_NUMBER}"
     }
     failure {
-      sh "./scripts/notify.sh 'failure' ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+      sh "./scripts/notify.sh failure ${env.JOB_NAME} ${env.BUILD_NUMBER}"
     }
     unstable {
-      sh "./scripts/notify.sh 'unstable' ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+      sh "./scripts/notify.sh unstable ${env.JOB_NAME} ${env.BUILD_NUMBER}"
     }
     aborted {
-      sh "./scripts/notify.sh 'aborted' ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+      sh "./scripts/notify.sh aborted ${env.JOB_NAME} ${env.BUILD_NUMBER}"
     }
   }
 }
