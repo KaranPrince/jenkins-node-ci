@@ -28,41 +28,34 @@ pipeline {
     }
 
     stage('Quality & Tests') {
-      parallel {
-        stage('SonarQube') {
-          steps {
-            withCredentials([
-              string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')
-            ]) {
-              sh '''#!/bin/bash
-                set -euo pipefail
-                sonar-scanner \
-                  -Dsonar.projectKey=$SONAR_KEY \
-                  -Dsonar.host.url=$SONAR_HOST \
-                  -Dsonar.token=$SONAR_TOKEN
-              '''
-              // Waiting for the SonarQube Quality Gate to pass
-              timeout(time: 5, unit: 'MINUTES') {
-                  waitForQualityGate abortPipeline: true
-              }
-            }
-          }
-        }
-
-        stage('Unit Tests') {
-          steps {
-            sh '''#!/bin/bash
-              set -euo pipefail
-              if ! npm ci --no-audit --no-fund; then
-                echo "npm ci failed (lock mismatch). Falling back to npm install..."
-                npm install --no-audit --no-fund
-              fi
-              npm test -- --coverage
-            '''
-          }
-        }
+  steps {
+    // Stage 1: Run Unit Tests
+    sh '''#!/bin/bash
+      set -euo pipefail
+      if ! npm ci --no-audit --no-fund; then
+        echo "npm ci failed (lock mismatch). Falling back to npm install..."
+        npm install --no-audit --no-fund
+      fi
+      npm test -- --coverage
+    '''
+    // Stage 2: Run SonarQube analysis after tests are complete
+    withCredentials([
+      string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')
+    ]) {
+      sh '''#!/bin/bash
+        set -euo pipefail
+        sonar-scanner \
+          -Dsonar.projectKey=$SONAR_KEY \
+          -Dsonar.host.url=$SONAR_HOST \
+          -Dsonar.token=$SONAR_TOKEN \
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+      '''
+      timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
       }
     }
+  }
+}
 
     stage('Security Scan (Trivy FS)') {
       steps {
