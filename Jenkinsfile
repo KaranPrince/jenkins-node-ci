@@ -189,22 +189,35 @@ pipeline {
 
   post {
     always {
-      sh '''#!/bin/bash
-        chmod +x ./scripts/notify.sh
-        docker system prune -af || true
-      '''
+        // Runs after every build to clean up Docker
+        sh 'docker system prune -af || true'
     }
     success {
-      sh "./scripts/notify.sh success ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+        script {
+            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+                sh "./scripts/notify.sh success ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
+            }
+        }
     }
     failure {
-      sh "./scripts/notify.sh failure ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+        script {
+            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+                sh "./scripts/notify.sh failure ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
+            }
+        }
     }
     unstable {
-      sh "./scripts/notify.sh unstable ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+        script {
+            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+                sh "./scripts/notify.sh unstable ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
+            }
+        }
     }
     aborted {
-      sh "./scripts/notify.sh aborted ${env.JOB_NAME} ${env.BUILD_NUMBER}"
+        script {
+            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+                sh "./scripts/notify.sh aborted ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
+            }
+        }
     }
-  }
 }
