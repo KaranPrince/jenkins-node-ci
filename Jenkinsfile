@@ -1,11 +1,4 @@
 pipeline {
-  def awsDockerLogin() {
-  sh '''
-    aws ecr get-login-password --region $AWS_REGION \
-      | docker login --username AWS --password-stdin $ECR_REPO
-  '''
-}
-
   agent any
 
   environment {
@@ -88,7 +81,7 @@ pipeline {
     stage('Push to ECR') {
       steps {
         script {
-          awsDockerLogin()
+          docker.withRegistry("https://576290270995.dkr.ecr.us-east-1.amazonaws.com", "ecr:us-east-1:aws-credentials")
         }
         sh '''
           set -euo pipefail
@@ -101,7 +94,7 @@ pipeline {
       when { branch 'master' }
       steps {
         script {
-          awsDockerLogin()
+          docker.withRegistry("https://576290270995.dkr.ecr.us-east-1.amazonaws.com", "ecr:us-east-1:aws-credentials")
         }
         sh '''#!/usr/bin/env bash
           set -euo pipefail
@@ -182,7 +175,7 @@ pipeline {
       }
       steps {
         script {
-          awsDockerLogin()
+          docker.withRegistry("https://576290270995.dkr.ecr.us-east-1.amazonaws.com", "ecr:us-east-1:aws-credentials")
         }
         sh '''#!/usr/bin/env bash
           set -euo pipefail
