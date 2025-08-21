@@ -39,7 +39,7 @@ pipeline {
           npm test -- --coverage
         '''
         // Stage 2: Run SonarQube analysis after tests are complete
-        withSonarQubeEnv(credentialsId: 'sonarqube-token') {
+        withSonarQubeEnv(installationName: 'SonarQube', credentialsId: 'sonarqube-token') {
           sh '''#!/bin/bash
             set -euo pipefail
             sonar-scanner \
