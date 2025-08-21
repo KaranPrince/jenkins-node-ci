@@ -57,7 +57,7 @@ pipeline {
                 echo "npm ci failed (lock mismatch). Falling back to npm install..."
                 npm install --no-audit --no-fund
               fi
-              npm test
+              npm test -- --coverage
             '''
           }
         }
