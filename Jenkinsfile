@@ -91,7 +91,7 @@ pipeline {
     }
 
     stage('Deploy to EC2 (via SSM)') {
-      when { branch 'master' }
+      when { expression { env.GIT_BRANCH == 'origin/master' } }
       steps {
         script {
           docker.withRegistry("https://576290270995.dkr.ecr.us-east-1.amazonaws.com", "ecr:us-east-1:aws-credentials") {
@@ -115,7 +115,7 @@ pipeline {
     }
     
     stage('Healthcheck & (possible) Rollback') {
-      when { branch 'master' }
+      when { expression { env.GIT_BRANCH == 'origin/master' } }
       steps {
         script {
           def rc = sh(returnStatus: true, script: '''#!/usr/bin/env bash
@@ -170,7 +170,7 @@ pipeline {
     stage('Promote image to stable') {
       when {
         allOf {
-          branch 'master'
+          expression { env.GIT_BRANCH == 'origin/master' }
           expression { currentBuild.currentResult == 'SUCCESS' }
         }
       }
