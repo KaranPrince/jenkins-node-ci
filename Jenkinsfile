@@ -12,10 +12,10 @@ pipeline {
     STABLE_TAG   = "stable"   // promoted only after healthcheck passes
 
     SONAR_KEY    = "jenkins-node-ci"
-    SONAR_HOST   = "http://3.80.177.136:9000"
+    SONAR_HOST   = "http://3.84.224.111:9000"
     SONAR_TOKEN  = credentials('sonarqube-token')
 
-    APP_URL      = "http://98.81.80.45/"
+    APP_URL      = "http://184.72.86.164/"
   }
 
   options { timestamps(); ansiColor('xterm') }
