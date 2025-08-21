@@ -31,7 +31,6 @@ pipeline {
       parallel {
         stage('SonarQube') {
           steps {
-            // Securely retrieving the SonarQube token from Jenkins credentials
             withCredentials([
               string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')
             ]) {
@@ -44,7 +43,7 @@ pipeline {
               '''
               // Waiting for the SonarQube Quality Gate to pass
               timeout(time: 5, unit: 'MINUTES') {
-                  waitForQualityGate()
+                  waitForQualityGate abortPipeline: true
               }
             }
           }
