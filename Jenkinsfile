@@ -81,7 +81,7 @@ pipeline {
       steps {
         script {
           docker.withRegistry("https://576290270995.dkr.ecr.us-east-1.amazonaws.com", "ecr:us-east-1:aws-credentials") {
-            sh '''
+            sh '''#!/usr/bin/env bash
               set -euo pipefail
               docker push $ECR_REPO:$BUILD_TAG
             '''
