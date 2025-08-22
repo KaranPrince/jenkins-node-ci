@@ -12,7 +12,7 @@ pipeline {
     STABLE_TAG   = "stable"    // promoted only after healthcheck passes
 
     SONAR_KEY    = "jenkins-node-ci"
-    SONAR_HOST   = "http://54.205.17.174:9000"
+    SONAR_HOST   = "http://13.218.236.227:9000"
     
     APP_URL      = "http://184.72.86.164/"
   }
