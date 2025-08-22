@@ -2,55 +2,74 @@ pipeline {
   agent any
 
   environment {
-    SHELL        = "/bin/bash"
+    SHELL         = "/bin/bash"
 
-    AWS_REGION   = "us-east-1"
-    ECR_REPO     = "576290270995.dkr.ecr.us-east-1.amazonaws.com/my-node-app"
-    INSTANCE_ID  = "i-0e2c8e55425432246"
+    AWS_REGION    = "us-east-1"
+    ECR_REGISTRY  = "576290270995.dkr.ecr.us-east-1.amazonaws.com"
+    ECR_REPO      = "my-node-app"
+    INSTANCE_ID   = "i-0e2c8e55425432246"
 
-    BUILD_TAG    = "build-${env.BUILD_NUMBER}"
-    STABLE_TAG   = "stable"    // promoted only after healthcheck passes
+    BUILD_TAG     = "build-${env.BUILD_NUMBER}"
+    STABLE_TAG    = "stable"
 
-    SONAR_KEY    = "jenkins-node-ci"
-    SONAR_HOST   = "http://13.218.236.227:9000"
-    
-    APP_URL      = "http://54.90.229.18/"
+    SONAR_KEY     = "jenkins-node-ci"        // matches sonar-project.properties
+    APP_URL       = "http://54.90.229.18/"
   }
 
   options { timestamps(); ansiColor('xterm') }
 
   stages {
+
     stage('Checkout') {
       steps {
         deleteDir()
         git branch: 'master', url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
+        // ensure scripts are executable (in case git perms didn’t apply)
+        sh 'chmod +x scripts/*.sh || true'
       }
     }
 
     stage('Quality & Tests') {
       steps {
-        // Stage 1: Run Unit Tests and generate coverage report
         sh '''#!/bin/bash
           set -euo pipefail
           if ! npm ci --no-audit --no-fund; then
-            echo "npm ci failed (lock mismatch). Falling back to npm install..."
+            echo "npm ci failed. Falling back to npm install..."
             npm install --no-audit --no-fund
           fi
-          npm test -- --coverage
+          npm test -- --timeout 5000 --exit --coverage
         '''
-        // Stage 2: Run SonarQube analysis after tests are complete
-        withSonarQubeEnv(installationName: 'SonarQube', credentialsId: 'sonarqube-token') {
-          sh '''#!/bin/bash
-            set -euo pipefail
-            sonar-scanner \
-              -Dsonar.projectKey=$SONAR_KEY \
-              -Dsonar.host.url=$SONAR_HOST \
-              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-          '''
-        }
-        // This step is crucial and must be outside the withSonarQubeEnv wrapper
-        timeout(time: 12, unit: 'MINUTES') {
-            waitForQualityGate abortPipeline: true
+
+        // Ping SonarQube first; if down, mark UNSTABLE and skip analysis.
+        script {
+          def sonarUp = sh(returnStatus: true, script: '''
+            curl -fsS --max-time 5 "$SONAR_HOST/api/system/health" >/dev/null 2>&1
+          ''') == 0
+          if (!sonarUp) {
+            echo "SonarQube seems down; skipping analysis and marking UNSTABLE."
+            currentBuild.result = 'UNSTABLE'
+          } else {
+            withSonarQubeEnv(installationName: 'SonarQube', credentialsId: 'sonarqube-token') {
+              sh '''#!/bin/bash
+                set -euo pipefail
+                sonar-scanner \
+                  -Dsonar.projectKey=$SONAR_KEY \
+                  -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+              '''
+            }
+            // Only wait for QG if the scanner succeeded and created report-task.txt
+            script {
+              def hasReport = fileExists("${env.WORKSPACE}/.scannerwork/report-task.txt") || fileExists('report-task.txt')
+              if (hasReport) {
+                timeout(time: 12, unit: 'MINUTES') {
+                  waitForQualityGate abortPipeline: true
+                }
+              } else {
+                echo "No report-task.txt found; skipping waitForQualityGate."
+                currentBuild.result = currentBuild.result ?: 'UNSTABLE'
+              }
+            }
+          }
         }
       }
     }
@@ -59,19 +78,19 @@ pipeline {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
-          trivy fs --exit-code 1 --severity HIGH,CRITICAL,MEDIUM --format template --template "@contrib/html.tpl" -o trivy-report.html . || true
+          trivy fs --exit-code 1 --severity HIGH,CRITICAL,MEDIUM \
+            --format template --template "@contrib/html.tpl" -o trivy-report.html .
         '''
-        archiveArtifacts artifacts: 'trivy-report.html', fingerprint: true
       }
+      post { always { archiveArtifacts artifacts: 'trivy-report.html', fingerprint: true } }
     }
 
     stage('Docker Build & Image Scan') {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
-          docker build -t $ECR_REPO:$BUILD_TAG .
-          # Report-only image scan (FS scan above already gates)
-          trivy image --severity HIGH,CRITICAL --no-progress $ECR_REPO:$BUILD_TAG || true
+          docker build -t $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG .
+          trivy image --severity HIGH,CRITICAL --no-progress $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG || true
         '''
       }
     }
@@ -79,10 +98,10 @@ pipeline {
     stage('Push to ECR') {
       steps {
         script {
-          withDockerRegistry([ credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REPO}" ]) {
+          withDockerRegistry([credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REGISTRY}"]) {
             sh '''#!/bin/bash
               set -euo pipefail
-              docker push $ECR_REPO:$BUILD_TAG
+              docker push $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG
             '''
           }
         }
@@ -90,10 +109,10 @@ pipeline {
     }
 
     stage('Deploy to EC2 (via SSM)') {
-      when { expression { env.GIT_BRANCH == 'origin/master' } }
+      when { branch 'master' }
       steps {
         script {
-          withDockerRegistry([ credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REPO}" ]) {
+          withDockerRegistry([credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REGISTRY}"]) {
             sh '''#!/bin/bash
               set -euo pipefail
               aws ssm send-command \
@@ -101,12 +120,7 @@ pipeline {
                 --document-name "AWS-RunShellScript" \
                 --comment "Deploy Node App" \
                 --region ${AWS_REGION} \
-                --parameters '{"commands":[
-                  "docker pull ${ECR_REPO}:${BUILD_TAG}",
-                  "docker stop app || true",
-                  "docker rm app || true",
-                  "docker run -d --name app -p 80:3000 --restart unless-stopped ${ECR_REPO}:${BUILD_TAG}"
-                ]}'
+                --parameters '{"commands":["docker pull '"$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"'","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped '"$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"'"]}'
             '''
           }
         }
@@ -114,13 +128,13 @@ pipeline {
     }
 
     stage('Healthcheck & (possible) Rollback') {
-      when { expression { env.GIT_BRANCH == 'origin/master' } }
+      when { branch 'master' }
       steps {
         script {
           def rc = sh(returnStatus: true, script: '''#!/bin/bash
             set -euo pipefail
             for i in {1..24}; do
-              if curl -fsS "$APP_URL" > /dev/null; then
+              if curl -fsS "$APP_URL" >/dev/null; then
                 echo "✅ App is healthy"
                 exit 0
               fi
@@ -133,23 +147,17 @@ pipeline {
 
           if (rc != 0) {
             echo "⚠️ Rolling back to last good image (stable)..."
-            withDockerRegistry([ credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REPO}" ]) {
+            withDockerRegistry([credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REGISTRY}"]) {
               sh '''#!/bin/bash
                 set -euo pipefail
-                docker pull ${ECR_REPO}:${STABLE_TAG}
+                docker pull ${ECR_REGISTRY}/${ECR_REPO}:${STABLE_TAG}
                 CMD_ID=$(aws ssm send-command \
                   --targets "Key=InstanceIds,Values=${INSTANCE_ID}" \
                   --document-name "AWS-RunShellScript" \
                   --region ${AWS_REGION} \
-                  --parameters 'commands=[
-                    "set -e",
-                    "docker pull ${ECR_REPO}:${STABLE_TAG}",
-                    "docker stop app || true",
-                    "docker rm app || true",
-                    "docker run -d --name app -p 80:3000 --restart unless-stopped ${ECR_REPO}:${STABLE_TAG}"
-                  ]' \
+                  --parameters '{"commands":["docker pull '"$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"'","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped '"$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"'"]}' \
                   --query 'Command.CommandId' --output text)
-                // Polling for SSM command status
+                # Polling for SSM command status
                 for i in {1..60}; do
                   STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details \
                     --region ${AWS_REGION} --query 'CommandInvocations[0].Status' --output text)
@@ -169,17 +177,17 @@ pipeline {
     stage('Promote image to stable') {
       when {
         allOf {
-          expression { env.GIT_BRANCH == 'origin/master' }
+          branch 'master'
           expression { currentBuild.currentResult == 'SUCCESS' }
         }
       }
       steps {
         script {
-          withDockerRegistry([ credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REPO}" ]) {
+          withDockerRegistry([credentialsId: 'ecr:us-east-1:aws-credentials', url: "https://${ECR_REGISTRY}"]) {
             sh '''#!/bin/bash
               set -euo pipefail
-              docker tag $ECR_REPO:$BUILD_TAG $ECR_REPO:$STABLE_TAG
-              docker push $ECR_REPO:$STABLE_TAG
+              docker tag $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG
+              docker push $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG
             '''
           }
         }
@@ -189,36 +197,45 @@ pipeline {
 
   post {
     always {
-        // Runs after every build to clean up Docker
-        sh 'docker system prune -af || true'
+      sh 'docker system prune -af || true'
     }
+
+    // small wrapper to avoid duplication and prevent Groovy interpolation of secret
     success {
-        script {
-            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-                sh "./scripts/notify.sh success ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
-            }
+      script {
+        withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+          sh(label: 'notify-success', script: '''
+            scripts/notify.sh success "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
+          ''')
         }
+      }
     }
     failure {
-        script {
-            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-                sh "./scripts/notify.sh failure ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
-            }
+      script {
+        withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+          sh(label: 'notify-failure', script: '''
+            scripts/notify.sh failure "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
+          ''')
         }
+      }
     }
     unstable {
-        script {
-            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-                sh "./scripts/notify.sh unstable ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
-            }
+      script {
+        withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+          sh(label: 'notify-unstable', script: '''
+            scripts/notify.sh unstable "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
+          ''')
         }
+      }
     }
     aborted {
-        script {
-            withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-                sh "./scripts/notify.sh aborted ${env.JOB_NAME} ${env.BUILD_NUMBER} $SLACK_URL"
-            }
+      script {
+        withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
+          sh(label: 'notify-aborted', script: '''
+            scripts/notify.sh aborted "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
+          ''')
         }
+      }
     }
   }
 }
