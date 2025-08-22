@@ -14,7 +14,7 @@ pipeline {
     SONAR_KEY    = "jenkins-node-ci"
     SONAR_HOST   = "http://13.218.236.227:9000"
     
-    APP_URL      = "http://184.72.86.164/"
+    APP_URL      = "http://54.90.229.18/"
   }
 
   options { timestamps(); ansiColor('xterm') }
