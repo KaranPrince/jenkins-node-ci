@@ -89,21 +89,19 @@ flowchart TD
     I -->|Fail| K[Rollback to Stable Image]
     J --> L[Slack Notification ✅]
     K --> L[Slack Notification ❌]
+```
 
 
 📸 Visual Showcase
-GitHub Webhook Trigger	Jenkins Pipeline Console	SonarQube Quality Report
+|GitHub Webhook | Trigger |	Jenkins Pipeline Console |	SonarQube Quality Report |
 
 	
 	
-Trivy Security Scan	Docker Build & Push	Deployment on EC2
+Trivy Security Scan	| Docker Build & Push | Deployment on EC2
 
 	
 	
-Healthcheck Passed ✅	Rollback Triggered 🔄	Slack Notification 🔔
-
-	
-```
+Healthcheck Passed ✅ | Rollback Triggered 🔄 | Slack Notification 🔔
 
 
 👉 The last **Part 3/3** will include:  
