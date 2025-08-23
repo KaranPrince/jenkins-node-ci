@@ -116,33 +116,45 @@ pipeline {
     }
 
     stage('Deploy to EC2 (via SSM)') {
-      steps {
-        sh '''#!/bin/bash
-          set -euo pipefail
+  steps {
+    sh '''#!/bin/bash
+      set -euo pipefail
 
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy Node App" \
-            --region "$AWS_REGION" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters commands="docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
-            --query "Command.CommandId" --output text > cmd.txt
+      # Send command: first login to ECR on the instance, then pull + run
+      CMD_ID=$(aws ssm send-command \
+        --document-name "AWS-RunShellScript" \
+        --comment "Deploy Node App" \
+        --region "$AWS_REGION" \
+        --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+        --parameters commands="aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
+        --query "Command.CommandId" --output text)
 
-          CMD_ID=$(cat cmd.txt)
+      echo "SSM CommandId: $CMD_ID" > cmd.txt
 
-          for i in {1..60}; do
-            STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query "CommandInvocations[0].Status" --output text)
-            echo "Deploy SSM status: $STATUS"
-            if [[ "$STATUS" == "Success" ]]; then exit 0; fi
-            if [[ "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" || "$STATUS" == "Failed" ]]; then exit 1; fi
-            sleep 5
-          done
+      # Poll and emit stdout/stderr for debugging (prints output every poll)
+      for i in {1..60}; do
+        STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query "CommandInvocations[0].Status" --output text)
+        echo "Deploy SSM status: $STATUS (poll $i/60)"
 
-          echo "SSM deploy timed out"
+        # Try to print remote stdout/err so Jenkins log contains failure reason
+        aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardOutputContent" --output text || true
+        aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardErrorContent" --output text || true
+
+        if [[ "$STATUS" == "Success" ]]; then
+          exit 0
+        fi
+        if [[ "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" || "$STATUS" == "Failed" ]]; then
+          # we've already printed stdout/err above — fail the job
           exit 1
-        '''
-      }
-    }
+        fi
+        sleep 5
+      done
+
+      echo "SSM deploy timed out"
+      exit 1
+    '''
+  }
+}
 
     stage('Healthcheck & (possible) Rollback') {
       steps {
