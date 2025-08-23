@@ -21,7 +21,6 @@ pipeline {
     SONAR_KEY    = "jenkins-node-ci"
     APP_URL      = "http://3.80.104.209/"
     
-    //Suppress Trivy VEX banner
     TRIVY_DISABLE_VEX_NOTICE = "true"
   }
 
@@ -31,6 +30,14 @@ pipeline {
       steps {
         deleteDir()
         git branch: 'master', url: 'https://github.com/KaranPrince/jenkins-node-ci.git'
+        script {
+          // capture git metadata for injection
+          env.GIT_COMMIT = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
+          env.GIT_BRANCH = sh(returnStdout: true, script: "git rev-parse --abbrev-ref HEAD").trim()
+          env.GIT_AUTHOR = sh(returnStdout: true, script: "git log -1 --pretty=format:'%an'").trim()
+          env.GIT_MESSAGE = sh(returnStdout: true, script: "git log -1 --pretty=format:'%s'").trim()
+          env.GIT_DATE = sh(returnStdout: true, script: "git log -1 --date=iso --pretty=format:'%ad'").trim()
+        }
       }
     }
 
@@ -85,17 +92,15 @@ pipeline {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
-          # Authenticate Docker with ECR
           aws ecr get-login-password --region "$AWS_REGION" | \
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-          # Build and tag image
-          docker build -t "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" .
+          # Enable BuildKit for faster builds
+          DOCKER_BUILDKIT=1 docker build -t "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" .
 
           # (Optional) Scan built image (non-blocking)
           trivy image --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" || true
 
-          # Push to ECR
           docker push "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
         '''
       }
@@ -110,7 +115,7 @@ pipeline {
             --comment "Deploy Node App" \
             --region "$AWS_REGION" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters commands="aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
+            --parameters commands="aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped -e BUILD_NUMBER=$BUILD_NUMBER -e GIT_DATE='$GIT_DATE' -e GIT_BRANCH=$GIT_BRANCH -e GIT_COMMIT=$GIT_COMMIT -e GIT_AUTHOR='$GIT_AUTHOR' -e GIT_MESSAGE='$GIT_MESSAGE' $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
             --query "Command.CommandId" --output text)
 
           for i in {1..60}; do
