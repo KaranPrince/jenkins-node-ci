@@ -26,7 +26,7 @@ pipeline {
     // --- SonarQube ---
     SONAR_KEY    = "jenkins-node-ci"
 
-    // --- App health URL (app runs directly on port 80) ---
+    // --- App health URL ---
     APP_URL      = "http://3.80.104.209/"
   }
 
@@ -41,19 +41,18 @@ pipeline {
 
     stage('Quality & Tests') {
       steps {
-        sh '''#!/bin/bash
+        sh '''
           set -euo pipefail
           npm ci --no-audit --no-fund || npm install --no-audit --no-fund
           npm test -- --coverage
         '''
 
         withSonarQubeEnv('SonarQube') {
-          sh '''#!/bin/bash
+          sh '''
             set -euo pipefail
             sonar-scanner \
               -Dsonar.projectKey="$SONAR_KEY" \
-              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-              -Dsonar.coverage.jacoco.xmlReportPaths=
+              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
           '''
         }
 
@@ -65,15 +64,13 @@ pipeline {
 
     stage('Security Scan (Trivy FS)') {
       steps {
-        sh '''#!/bin/bash
+        sh '''
           set -euo pipefail
-
+          TEMPLATE=""
           if [ -f "/usr/local/share/trivy/templates/html.tpl" ]; then
             TEMPLATE="@/usr/local/share/trivy/templates/html.tpl"
           elif [ -f "/root/.cache/trivy/templates/html.tpl" ]; then
             TEMPLATE="@/root/.cache/trivy/templates/html.tpl"
-          else
-            TEMPLATE=""
           fi
 
           if [ -n "$TEMPLATE" ]; then
@@ -91,16 +88,12 @@ pipeline {
 
     stage('Docker Build & Push') {
       steps {
-        sh '''#!/bin/bash
+        sh '''
           set -euo pipefail
-
           aws ecr get-login-password --region "$AWS_REGION" | \
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
-
           docker build -t "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" .
-
-          trivy image --exit-code 0 --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
-
+          trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
           docker push "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
         '''
       }
@@ -108,9 +101,8 @@ pipeline {
 
     stage('Deploy to EC2 (via SSM)') {
       steps {
-        sh '''#!/bin/bash
+        sh '''
           set -euo pipefail
-
           CMD_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy Node App" \
@@ -119,21 +111,11 @@ pipeline {
             --parameters commands="aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
             --query "Command.CommandId" --output text)
 
-          echo "SSM CommandId: $CMD_ID" > cmd.txt
-
           for i in {1..60}; do
             STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query "CommandInvocations[0].Status" --output text)
             echo "Deploy SSM status: $STATUS (poll $i/60)"
-
-            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardOutputContent" --output text || true
-            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardErrorContent" --output text || true
-
-            if [[ "$STATUS" == "Success" ]]; then
-              exit 0
-            fi
-            if [[ "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" || "$STATUS" == "Failed" ]]; then
-              exit 1
-            fi
+            if [[ "$STATUS" == "Success" ]]; then exit 0; fi
+            if [[ "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" || "$STATUS" == "Failed" ]]; then exit 1; fi
             sleep 5
           done
 
@@ -143,10 +125,10 @@ pipeline {
       }
     }
 
-    stage('Healthcheck & (possible) Rollback') {
+    stage('Healthcheck & Rollback') {
       steps {
         script {
-          def rc = sh(returnStatus: true, script: '''#!/bin/bash
+          def rc = sh(returnStatus: true, script: '''
             set -euo pipefail
             for i in {1..24}; do
               if curl -fsS "$APP_URL" > /dev/null; then
@@ -161,13 +143,8 @@ pipeline {
           ''')
 
           if (rc != 0) {
-            echo "⚠️ Rolling back to last good image ($STABLE_TAG)..."
-            sh '''#!/bin/bash
+            sh '''
               set -euo pipefail
-
-              aws ecr get-login-password --region "$AWS_REGION" | \
-                docker login --username AWS --password-stdin "$ECR_REGISTRY"
-
               CMD_ID=$(aws ssm send-command \
                 --document-name "AWS-RunShellScript" \
                 --region "$AWS_REGION" \
@@ -182,8 +159,6 @@ pipeline {
                 [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" ]] && exit 1
                 sleep 5
               done
-
-              echo "Rollback SSM timed out"
               exit 1
             '''
             error("Rolled back because healthcheck failed.")
@@ -194,7 +169,7 @@ pipeline {
 
     stage('Promote image to stable') {
       steps {
-        sh '''#!/bin/bash
+        sh '''
           set -euo pipefail
           aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
           docker pull "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
@@ -206,20 +181,20 @@ pipeline {
   }
 
   post {
-  always {
-    sh 'docker system prune -af || true'
+    always {
+      sh 'docker system prune -af || true'
+    }
+    success {
+      slackSend(color: 'good', message: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}")
+    }
+    failure {
+      slackSend(color: 'danger', message: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}")
+    }
+    unstable {
+      slackSend(color: 'warning', message: "⚠️ UNSTABLE: ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}")
+    }
+    aborted {
+      slackSend(color: '#AAAAAA', message: "🚫 ABORTED: ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}")
+    }
   }
-  success {
-    slackSend(color: 'good', message: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
-  }
-  failure {
-    slackSend(color: 'danger', message: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
-  }
-  unstable {
-    slackSend(color: 'warning', message: "⚠️ UNSTABLE: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
-  }
-  aborted {
-    slackSend(color: '#AAAAAA', message: "🚫 ABORTED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
-  }
-}
 }
