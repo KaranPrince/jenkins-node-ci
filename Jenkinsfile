@@ -109,26 +109,26 @@ pipeline {
 stage('Deploy to EC2 (via SSM)') {
   steps {
     sh '''#!/bin/bash
-set -euo pipefail
-
-# Write the JSON params to a temp file
-cat > ssm-params.json <<EOT
-{
-  "commands": [
-    "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
-    "docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG",
-    "docker stop app || true",
-    "docker rm app || true",
-    "docker run -d --name app -p 80:3000 --restart unless-stopped \
-      -e BUILD_NUMBER=$BUILD_NUMBER \
-      -e GIT_DATE=\\"$GIT_DATE\\" \
-      -e GIT_BRANCH=$GIT_BRANCH \
-      -e GIT_COMMIT=$GIT_COMMIT \
-      -e GIT_AUTHOR=\\"$GIT_AUTHOR\\" \
-      -e GIT_MESSAGE=\\"$GIT_MESSAGE\\" \
-      $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
-  ]
-}
+      set -euo pipefail
+      
+      # Write the JSON params to a temp file
+      cat > ssm-params.json <<EOT
+      {
+        "commands": [
+          "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
+          "docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG",
+          "docker stop app || true",
+          "docker rm app || true",
+          "docker run -d --name app -p 80:3000 --restart unless-stopped \
+            -e BUILD_NUMBER=$BUILD_NUMBER \
+            -e GIT_DATE=\\"$GIT_DATE\\" \
+            -e GIT_BRANCH=$GIT_BRANCH \
+            -e GIT_COMMIT=$GIT_COMMIT \
+            -e GIT_AUTHOR=\\"$GIT_AUTHOR\\" \
+            -e GIT_MESSAGE=\\"$GIT_MESSAGE\\" \
+            $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
+        ]
+      }
 EOT
 
 CMD_ID=$(aws ssm send-command \
@@ -154,41 +154,55 @@ exit 1
 }
 
 
-    stage('Healthcheck & Rollback') {
+        stage('Healthcheck & Rollback') {
       steps {
         script {
           def rc = sh(returnStatus: true, script: '''#!/bin/bash
-            set -euo pipefail
-            for i in {1..24}; do
-              if curl -fsS "$APP_URL" > /dev/null; then
-                echo "✅ App is healthy"
-                exit 0
-              fi
-              echo "⏳ Waiting for app to become healthy ($i/24)..."
-              sleep 10
-            done
-            exit 1
-          ''')
+set -euo pipefail
+for i in {1..24}; do
+  if curl -fsS "$APP_URL" > /dev/null; then
+    echo "✅ App is healthy"
+    exit 0
+  fi
+  echo "⏳ Waiting for app to become healthy ($i/24)..."
+  sleep 10
+done
+exit 1
+''')
 
           if (rc != 0) {
             sh '''#!/bin/bash
               set -euo pipefail
-              CMD_ID=$(aws ssm send-command \
-                --document-name "AWS-RunShellScript" \
-                --region "$AWS_REGION" \
-                --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-                --parameters commands="docker pull $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG" \
-                --query "Command.CommandId" --output text)
+              
+              # Write rollback JSON params to temp file
+              cat > rollback-params.json <<EOT
+              {
+                "commands": [
+                  "docker pull $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG",
+                  "docker stop app || true",
+                  "docker rm app || true",
+                  "docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"
+                ]
+              }
+EOT
 
-              for i in {1..60}; do
-                STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query 'CommandInvocations[0].Status' --output text)
-                echo "Rollback SSM status: $STATUS"
-                [[ "$STATUS" == "Success" ]] && exit 0
-                [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" ]] && exit 1
-                sleep 5
-              done
-              exit 1
-            '''
+CMD_ID=$(aws ssm send-command \
+  --document-name "AWS-RunShellScript" \
+  --region "$AWS_REGION" \
+  --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+  --parameters file://rollback-params.json \
+  --query "Command.CommandId" --output text)
+
+for i in {1..60}; do
+  STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query 'CommandInvocations[0].Status' --output text)
+  echo "Rollback SSM status: $STATUS (poll $i/60)"
+  [[ "$STATUS" == "Success" ]] && exit 0
+  [[ "$STATUS" == "Failed" || "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" ]] && exit 1
+  sleep 5
+done
+
+exit 1
+'''
             error("Rolled back because healthcheck failed.")
           }
         }
