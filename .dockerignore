@@ -1,10 +1,26 @@
+# Node dependencies
 node_modules
 npm-debug.log
+yarn.lock
+package-lock.json
+
+# Logs
+*.log
+logs
+coverage
+
+# Git / CI junk
 .git
 .gitignore
 Jenkinsfile
 Dockerfile
+
+# Local env & config
+.env
+*.local
 deploy.env
+
+# Terraform state
 infra/.terraform
 infra/terraform.tfstate*
 /tmp
