@@ -21,7 +21,7 @@ pipeline {
     SONAR_KEY    = "jenkins-node-ci"
     APP_URL      = "http://3.80.104.209/"
     
-    # Suppress Trivy VEX banner
+    //Suppress Trivy VEX banner
     TRIVY_DISABLE_VEX_NOTICE = "true"
   }
 
