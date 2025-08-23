@@ -104,9 +104,7 @@ Trivy Security Scan	| Docker Build & Push | Deployment on EC2
 Healthcheck Passed ✅ | Rollback Triggered 🔄 | Slack Notification 🔔
 
 
-👉 The last **Part 3/3** will include:  
 - 🎯 Features / Improvements list  
 - 🗺️ Roadmap  
 - 🙋 Author & credits  
 
-Do you want me to also add **fun badges/emoji animations like “Made with ❤️ in Jenkins” or pipeline running GIFs** in Part 3?
