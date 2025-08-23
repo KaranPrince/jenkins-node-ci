@@ -27,7 +27,7 @@ pipeline {
     SONAR_KEY    = "jenkins-node-ci"
 
     // --- App health URL (your web server) ---
-    APP_URL      = "http://54.90.229.18/"
+    APP_URL      = "http://3.80.104.209/"
   }
 
   stages {
@@ -66,11 +66,31 @@ pipeline {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
-          trivy fs --exit-code 1 --severity HIGH,CRITICAL,MEDIUM \
-            --format template --template "@contrib/html.tpl" \
-            -o trivy-report.html .
+          # Prefer HTML report if template exists, otherwise fallback to table
+          if trivy -h | grep -q "@contrib/html.tpl" && [ -f "$(trivy -v >/dev/null 2>&1; echo)" ]; then
+            true # no-op to avoid set -e nuisance
+          fi
+
+          if [ -f "/usr/local/share/trivy/templates/html.tpl" ]; then
+            TEMPLATE="@/usr/local/share/trivy/templates/html.tpl"
+          elif [ -f "/root/.cache/trivy/templates/html.tpl" ]; then
+            TEMPLATE="@/root/.cache/trivy/templates/html.tpl"
+          elif [ -f "$(dirname "$(which trivy 2>/dev/null)")/../share/trivy/templates/html.tpl" ]; then
+            TEMPLATE="@$(dirname "$(which trivy)")/../share/trivy/templates/html.tpl"
+          else
+            TEMPLATE=""
+          fi
+
+          if [ -n "$TEMPLATE" ]; then
+            trivy fs --exit-code 1 --severity HIGH,CRITICAL,MEDIUM \
+              --format template --template "$TEMPLATE" \
+              -o trivy-report.html .
+          else
+            trivy fs --exit-code 1 --severity HIGH,CRITICAL,MEDIUM \
+              --format table -o trivy-report.txt .
+          fi
         '''
-        archiveArtifacts artifacts: 'trivy-report.html', fingerprint: true
+        archiveArtifacts artifacts: 'trivy-report.*', fingerprint: true
       }
     }
 
@@ -79,7 +99,7 @@ pipeline {
         sh '''#!/bin/bash
           set -euo pipefail
 
-          # Login to ECR
+          # Login to ECR (requires either instance profile or env creds)
           aws ecr get-login-password --region "$AWS_REGION" | \
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
@@ -101,7 +121,6 @@ pipeline {
         sh '''#!/bin/bash
           set -euo pipefail
 
-          # Send SSM command. Use --parameters commands="cmd1","cmd2",... so our variables expand here.
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy Node App" \
@@ -112,7 +131,6 @@ pipeline {
 
           CMD_ID=$(cat cmd.txt)
 
-          # Poll SSM invocation status
           for i in {1..60}; do
             STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query "CommandInvocations[0].Status" --output text)
             echo "Deploy SSM status: $STATUS"
@@ -150,7 +168,6 @@ pipeline {
             sh '''#!/bin/bash
               set -euo pipefail
 
-              # Login (safe even if already logged in)
               aws ecr get-login-password --region "$AWS_REGION" | \
                 docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
@@ -163,7 +180,6 @@ pipeline {
                 --parameters commands="docker pull $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG" \
                 --query "Command.CommandId" --output text)
 
-              # Poll rollback status
               for i in {1..60}; do
                 STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query 'CommandInvocations[0].Status' --output text)
                 echo "Rollback SSM status: $STATUS"
@@ -206,30 +222,22 @@ pipeline {
     }
     success {
       withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh '''#!/bin/bash
-          scripts/notify.sh success "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
-        '''
+        sh 'scripts/notify.sh success "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
       }
     }
     failure {
       withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh '''#!/bin/bash
-          scripts/notify.sh failure "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
-        '''
+        sh 'scripts/notify.sh failure "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
       }
     }
     unstable {
       withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh '''#!/bin/bash
-          scripts/notify.sh unstable "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
-        '''
+        sh 'scripts/notify.sh unstable "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
       }
     }
     aborted {
       withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh '''#!/bin/bash
-          scripts/notify.sh aborted "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"
-        '''
+        sh 'scripts/notify.sh aborted "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
       }
     }
   }
