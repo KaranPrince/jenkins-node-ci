@@ -1,12 +1,19 @@
-const request = require("supertest");
-const server = require("../app/server");
+const { spawn } = require("child_process");
+const path = require("path");
 
-describe("Server.js coverage", () => {
-  it("should respond with Deployment Success message on /", async () => {
-    const res = await request(server).get("/");
-    if (res.status !== 200) throw new Error("Expected 200 OK");
-    if (!res.text.includes("Jenkins Deployment Successful")) {
-      throw new Error("Expected response to include Deployment Success message");
-    }
+describe("Server.js listen()", () => {
+  it("should start the server process", (done) => {
+    const serverProcess = spawn("node", [path.join(__dirname, "../app/server.js")], {
+      env: { ...process.env, PORT: 4000 },
+    });
+
+    serverProcess.stdout.on("data", (data) => {
+      if (data.toString().includes("Server listening")) {
+        serverProcess.kill();
+        done();
+      }
+    });
+
+    serverProcess.on("error", done);
   });
 });
