@@ -41,15 +41,13 @@ pipeline {
 
     stage('Quality & Tests') {
       steps {
-        sh '''
-          set -euo pipefail
+        sh '''#!/bin/bash -euo pipefail
           npm ci --no-audit --no-fund || npm install --no-audit --no-fund
           npm test -- --coverage
         '''
 
         withSonarQubeEnv('SonarQube') {
-          sh '''
-            set -euo pipefail
+          sh '''#!/bin/bash -euo pipefail
             sonar-scanner \
               -Dsonar.projectKey="$SONAR_KEY" \
               -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
@@ -64,8 +62,7 @@ pipeline {
 
     stage('Security Scan (Trivy FS)') {
       steps {
-        sh '''
-          set -euo pipefail
+        sh '''#!/bin/bash -euo pipefail
           TEMPLATE=""
           if [ -f "/usr/local/share/trivy/templates/html.tpl" ]; then
             TEMPLATE="@/usr/local/share/trivy/templates/html.tpl"
@@ -88,12 +85,14 @@ pipeline {
 
     stage('Docker Build & Push') {
       steps {
-        sh '''
-          set -euo pipefail
+        sh '''#!/bin/bash -euo pipefail
           aws ecr get-login-password --region "$AWS_REGION" | \
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
           docker build -t "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" .
+
           trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
+
           docker push "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
         '''
       }
@@ -101,8 +100,7 @@ pipeline {
 
     stage('Deploy to EC2 (via SSM)') {
       steps {
-        sh '''
-          set -euo pipefail
+        sh '''#!/bin/bash -euo pipefail
           CMD_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy Node App" \
@@ -128,8 +126,7 @@ pipeline {
     stage('Healthcheck & Rollback') {
       steps {
         script {
-          def rc = sh(returnStatus: true, script: '''
-            set -euo pipefail
+          def rc = sh(returnStatus: true, script: '''#!/bin/bash -euo pipefail
             for i in {1..24}; do
               if curl -fsS "$APP_URL" > /dev/null; then
                 echo "✅ App is healthy"
@@ -143,8 +140,7 @@ pipeline {
           ''')
 
           if (rc != 0) {
-            sh '''
-              set -euo pipefail
+            sh '''#!/bin/bash -euo pipefail
               CMD_ID=$(aws ssm send-command \
                 --document-name "AWS-RunShellScript" \
                 --region "$AWS_REGION" \
@@ -169,8 +165,7 @@ pipeline {
 
     stage('Promote image to stable') {
       steps {
-        sh '''
-          set -euo pipefail
+        sh '''#!/bin/bash -euo pipefail
           aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
           docker pull "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
           docker tag "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" "$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"
