@@ -206,28 +206,20 @@ pipeline {
   }
 
   post {
-    always {
-      sh 'docker system prune -af || true'
-    }
-    success {
-      withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh 'scripts/notify.sh success "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
-      }
-    }
-    failure {
-      withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh 'scripts/notify.sh failure "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
-      }
-    }
-    unstable {
-      withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh 'scripts/notify.sh unstable "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
-      }
-    }
-    aborted {
-      withCredentials([string(credentialsId: 'Slack-CI-CD', variable: 'SLACK_URL')]) {
-        sh 'scripts/notify.sh aborted "$JOB_NAME" "$BUILD_NUMBER" "$SLACK_URL"'
-      }
-    }
+  always {
+    sh 'docker system prune -af || true'
   }
+  success {
+    slackSend(color: 'good', message: "✅ SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
+  }
+  failure {
+    slackSend(color: 'danger', message: "❌ FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
+  }
+  unstable {
+    slackSend(color: 'warning', message: "⚠️ UNSTABLE: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
+  }
+  aborted {
+    slackSend(color: '#AAAAAA', message: "🚫 ABORTED: ${env.JOB_NAME} #${env.BUILD_NUMBER} (${env.BUILD_URL})")
+  }
+}
 }
