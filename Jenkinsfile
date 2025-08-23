@@ -181,10 +181,18 @@ pipeline {
               aws ecr get-login-password --region "$AWS_REGION" | \
                 docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-              docker pull "$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG" || {
-  echo "No stable image found in ECR ($STABLE_TAG) — cannot rollback automatically"
-  exit 1
-}
+              echo "[Rollback] Attempting to pull stable image: $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"
+
+              if docker pull "$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"; then
+                echo "[Rollback] Pulled stable image successfully. Re-deploying..."
+                docker stop app || true
+                docker rm app || true
+                docker run -d --name app -p 80:3000 --restart unless-stopped "$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"
+              else
+                echo "[Rollback] No stable image found in ECR ($STABLE_TAG) — cannot rollback automatically."
+                exit 1
+              fi
+
 
               CMD_ID=$(aws ssm send-command \
                 --document-name "AWS-RunShellScript" \
