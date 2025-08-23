@@ -107,7 +107,7 @@ pipeline {
           docker build -t "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" .
 
           # (Optional) Image scan - report only
-          trivy image --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" || true
+          trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
 
           # Push
           docker push "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
