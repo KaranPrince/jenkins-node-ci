@@ -116,7 +116,6 @@ pipeline {
     }
 
     stage('Deploy to EC2 (via SSM)') {
-      when { branch 'master' }
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
@@ -146,7 +145,6 @@ pipeline {
     }
 
     stage('Healthcheck & (possible) Rollback') {
-      when { branch 'master' }
       steps {
         script {
           def rc = sh(returnStatus: true, script: '''#!/bin/bash
@@ -198,12 +196,6 @@ pipeline {
     }
 
     stage('Promote image to stable') {
-      when {
-        allOf {
-          branch 'master'
-          expression { currentBuild.currentResult == 'SUCCESS' }
-        }
-      }
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
