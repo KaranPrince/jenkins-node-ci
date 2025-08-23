@@ -115,7 +115,21 @@ pipeline {
             --comment "Deploy Node App" \
             --region "$AWS_REGION" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters commands="aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped -e BUILD_NUMBER=$BUILD_NUMBER -e GIT_DATE='$GIT_DATE' -e GIT_BRANCH=$GIT_BRANCH -e GIT_COMMIT=$GIT_COMMIT -e GIT_AUTHOR='$GIT_AUTHOR' -e GIT_MESSAGE='$GIT_MESSAGE' $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
+            --parameters '{"commands":[
+  "aws ecr get-login-password --region '$AWS_REGION' | docker login --username AWS --password-stdin '$ECR_REGISTRY'",
+  "docker pull '$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG'",
+  "docker stop app || true",
+  "docker rm app || true",
+  "docker run -d --name app -p 80:3000 --restart unless-stopped \
+     -e BUILD_NUMBER='$BUILD_NUMBER' \
+     -e GIT_DATE='$GIT_DATE' \
+     -e GIT_BRANCH='$GIT_BRANCH' \
+     -e GIT_COMMIT='$GIT_COMMIT' \
+     -e GIT_AUTHOR='$GIT_AUTHOR' \
+     -e GIT_MESSAGE='$GIT_MESSAGE' \
+     '$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG'"
+]}'
+
             --query "Command.CommandId" --output text)
 
           for i in {1..60}; do
