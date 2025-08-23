@@ -8,6 +8,7 @@
     "test": "nyc --reporter=lcov --reporter=text mocha --timeout 5000 --exit"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "express": "^4.19.2"
   },
   "devDependencies": {
