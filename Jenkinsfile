@@ -26,7 +26,7 @@ pipeline {
     // --- SonarQube ---
     SONAR_KEY    = "jenkins-node-ci"
 
-    // --- App health URL (your web server) ---
+    // --- App health URL (app runs directly on port 80) ---
     APP_URL      = "http://3.80.104.209/"
   }
 
@@ -52,7 +52,8 @@ pipeline {
             set -euo pipefail
             sonar-scanner \
               -Dsonar.projectKey="$SONAR_KEY" \
-              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+              -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
+              -Dsonar.coverage.jacoco.xmlReportPaths=
           '''
         }
 
@@ -66,17 +67,11 @@ pipeline {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
-          # Prefer HTML report if template exists, otherwise fallback to table
-          if trivy -h | grep -q "@contrib/html.tpl" && [ -f "$(trivy -v >/dev/null 2>&1; echo)" ]; then
-            true # no-op to avoid set -e nuisance
-          fi
 
           if [ -f "/usr/local/share/trivy/templates/html.tpl" ]; then
             TEMPLATE="@/usr/local/share/trivy/templates/html.tpl"
           elif [ -f "/root/.cache/trivy/templates/html.tpl" ]; then
             TEMPLATE="@/root/.cache/trivy/templates/html.tpl"
-          elif [ -f "$(dirname "$(which trivy 2>/dev/null)")/../share/trivy/templates/html.tpl" ]; then
-            TEMPLATE="@$(dirname "$(which trivy)")/../share/trivy/templates/html.tpl"
           else
             TEMPLATE=""
           fi
@@ -99,62 +94,54 @@ pipeline {
         sh '''#!/bin/bash
           set -euo pipefail
 
-          # Login to ECR (requires either instance profile or env creds)
           aws ecr get-login-password --region "$AWS_REGION" | \
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
-          # Build
           docker build -t "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" .
 
-          # (Optional) Image scan - report only
           trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
 
-          # Push
           docker push "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
         '''
       }
     }
 
     stage('Deploy to EC2 (via SSM)') {
-  steps {
-    sh '''#!/bin/bash
-      set -euo pipefail
+      steps {
+        sh '''#!/bin/bash
+          set -euo pipefail
 
-      # Send command: first login to ECR on the instance, then pull + run
-      CMD_ID=$(aws ssm send-command \
-        --document-name "AWS-RunShellScript" \
-        --comment "Deploy Node App" \
-        --region "$AWS_REGION" \
-        --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-        --parameters commands="aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
-        --query "Command.CommandId" --output text)
+          CMD_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy Node App" \
+            --region "$AWS_REGION" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters commands="aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY","docker pull $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG","docker stop app || true","docker rm app || true","docker run -d --name app -p 80:3000 --restart unless-stopped $ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" \
+            --query "Command.CommandId" --output text)
 
-      echo "SSM CommandId: $CMD_ID" > cmd.txt
+          echo "SSM CommandId: $CMD_ID" > cmd.txt
 
-      # Poll and emit stdout/stderr for debugging (prints output every poll)
-      for i in {1..60}; do
-        STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query "CommandInvocations[0].Status" --output text)
-        echo "Deploy SSM status: $STATUS (poll $i/60)"
+          for i in {1..60}; do
+            STATUS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --details --region "$AWS_REGION" --query "CommandInvocations[0].Status" --output text)
+            echo "Deploy SSM status: $STATUS (poll $i/60)"
 
-        # Try to print remote stdout/err so Jenkins log contains failure reason
-        aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardOutputContent" --output text || true
-        aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardErrorContent" --output text || true
+            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardOutputContent" --output text || true
+            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$INSTANCE_ID" --region "$AWS_REGION" --query "StandardErrorContent" --output text || true
 
-        if [[ "$STATUS" == "Success" ]]; then
-          exit 0
-        fi
-        if [[ "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" || "$STATUS" == "Failed" ]]; then
-          # we've already printed stdout/err above — fail the job
+            if [[ "$STATUS" == "Success" ]]; then
+              exit 0
+            fi
+            if [[ "$STATUS" == "Cancelled" || "$STATUS" == "TimedOut" || "$STATUS" == "Failed" ]]; then
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo "SSM deploy timed out"
           exit 1
-        fi
-        sleep 5
-      done
-
-      echo "SSM deploy timed out"
-      exit 1
-    '''
-  }
-}
+        '''
+      }
+    }
 
     stage('Healthcheck & (possible) Rollback') {
       steps {
@@ -180,19 +167,6 @@ pipeline {
 
               aws ecr get-login-password --region "$AWS_REGION" | \
                 docker login --username AWS --password-stdin "$ECR_REGISTRY"
-
-              echo "[Rollback] Attempting to pull stable image: $ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"
-
-              if docker pull "$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"; then
-                echo "[Rollback] Pulled stable image successfully. Re-deploying..."
-                docker stop app || true
-                docker rm app || true
-                docker run -d --name app -p 80:3000 --restart unless-stopped "$ECR_REGISTRY/$ECR_REPO:$STABLE_TAG"
-              else
-                echo "[Rollback] No stable image found in ECR ($STABLE_TAG) — cannot rollback automatically."
-                exit 1
-              fi
-
 
               CMD_ID=$(aws ssm send-command \
                 --document-name "AWS-RunShellScript" \
