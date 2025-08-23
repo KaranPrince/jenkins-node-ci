@@ -20,6 +20,9 @@ pipeline {
 
     SONAR_KEY    = "jenkins-node-ci"
     APP_URL      = "http://3.80.104.209/"
+    
+    # Suppress Trivy VEX banner
+    TRIVY_DISABLE_VEX_NOTICE = "true"
   }
 
   stages {
@@ -82,13 +85,17 @@ pipeline {
       steps {
         sh '''#!/bin/bash
           set -euo pipefail
+          # Authenticate Docker with ECR
           aws ecr get-login-password --region "$AWS_REGION" | \
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
+          # Build and tag image
           docker build -t "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" .
 
-          trivy image --exit-code 1 --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" || true
+          # (Optional) Scan built image (non-blocking)
+          trivy image --severity HIGH,CRITICAL --no-progress "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG" || true
 
+          # Push to ECR
           docker push "$ECR_REGISTRY/$ECR_REPO:$BUILD_TAG"
         '''
       }
