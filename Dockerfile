@@ -2,32 +2,34 @@
 FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Install dependencies first (cache-friendly)
+# copy only dependency files first (better caching)
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
-# Copy rest of the app
+# use BuildKit cache mount for npm
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then \
+      npm ci --no-audit --no-fund; \
+    else \
+      npm install --no-audit --no-fund; \
+    fi
+
+# now copy the rest of the source
 COPY . .
 
-# Run build steps (if you had TS transpile, asset build, etc.)
-# For now, no-op since it's plain Node.js
+# prune devDependencies
+RUN npm prune --omit=dev
 
 # ---------- Runtime stage ----------
 FROM node:18-alpine
-ENV NODE_ENV=production
 WORKDIR /app
+ENV NODE_ENV=production
 
-# Create a non-root user
+# create app user
 RUN addgroup -S app && adduser -S app -G app
 
-# Install only production dependencies
-COPY package*.json ./
-RUN npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund
-
-# Copy built app from builder
-COPY --from=builder /app/ /app/
+# copy only production node_modules and source
+COPY --from=builder /app /app
 
 USER app
 EXPOSE 3000
-
 CMD ["node", "app/server.js"]
